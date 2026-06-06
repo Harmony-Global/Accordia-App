@@ -1,4 +1,4 @@
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000";
+const API_URL = (process.env.NEXT_PUBLIC_API_URL ?? (process.env.NODE_ENV === "development" ? "http://localhost:3000" : "")).replace(/\/$/, "");
 
 type RequestOptions = {
   token?: string | null;
@@ -7,6 +7,10 @@ type RequestOptions = {
 };
 
 export async function apiFetch<T>(path: string, options: RequestOptions = {}): Promise<T> {
+  if (!API_URL) {
+    throw new Error("Accordia API URL is not configured. Set NEXT_PUBLIC_API_URL and redeploy the frontend.");
+  }
+
   const headers: HeadersInit = {
     "Content-Type": "application/json"
   };
