@@ -52,10 +52,10 @@ export default function ProfessionalCategoriesPage() {
 
   return (
     <AppShell>
-      <div className="mb-6 flex items-end justify-between gap-4">
+      <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
         <div>
           <p className="text-sm font-medium text-brand">Professional setup</p>
-          <h1 className="mt-1 text-3xl font-semibold text-ink">Choose your categories</h1>
+          <h1 className="mt-1 text-2xl font-semibold text-ink sm:text-3xl">Choose your categories</h1>
         </div>
         <Button disabled={selected.length === 0 || saving} onClick={save} type="button">
           {saving ? (
@@ -68,7 +68,7 @@ export default function ProfessionalCategoriesPage() {
       </div>
       {loadError ? <div className="mb-4"><Alert>{loadError}</Alert></div> : null}
       {error ? <div className="mb-4"><Alert>{error}</Alert></div> : null}
-      <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
         {categories.map((category) => (
           <button
             className={`rounded-lg border bg-white p-4 text-left shadow-sm transition ${selected.includes(category.id) ? "border-brand bg-teal-50 ring-2 ring-teal-100" : "border-line hover:border-brand"}`}

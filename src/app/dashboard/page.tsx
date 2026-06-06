@@ -119,12 +119,12 @@ export default function DashboardPage() {
       {error ? <Alert>{error}</Alert> : null}
       {clientJobsError && profile?.role === "client" ? <div className="mb-4"><Alert>{clientJobsError}</Alert></div> : null}
       <div className="mb-6">
-        <h1 className="mt-1 text-3xl font-semibold text-ink">
+        <h1 className="mt-1 text-2xl font-semibold text-ink sm:text-3xl">
           {profile ? `Welcome, ${profile.first_name}` : "Welcome"}
         </h1>
       </div>
       {profile?.role === "professional" ? (
-        <div className="grid gap-4 lg:grid-cols-[1fr_360px]">
+        <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_440px]">
           <div className="grid gap-4 md:grid-cols-2">
             <ActionCard body="Choose the kinds of jobs you want to see." href="/professional/categories" icon={ListChecks} title="Set your categories" />
             <ActionCard body="View jobs that match your selected categories." href="/professional/jobs" icon={SearchCheck} title="Browse matched jobs" />
@@ -134,7 +134,7 @@ export default function DashboardPage() {
         </div>
       ) : null}
       {profile?.role === "client" ? (
-        <div className="grid gap-4 lg:grid-cols-[1fr_360px]">
+        <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_440px]">
           <div className="grid gap-4 md:grid-cols-2">
             <ActionCard body="Create a new job for professionals to apply to." href="/client/jobs/new" icon={BriefcaseBusiness} title="Post a job" />
             <ActionCard body="Review views, applications, and job statuses." href="/client/jobs" icon={MessageSquare} title="Track my jobs" />

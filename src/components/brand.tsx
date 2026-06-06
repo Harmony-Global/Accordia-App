@@ -1,12 +1,53 @@
-import {
-  Building2,
-  Hammer,
-  Paintbrush,
-  PlugZap,
-  Sparkles,
-  UserRound,
-} from "lucide-react";
+"use client";
+
 import Image from "next/image";
+import { useEffect, useState } from "react";
+
+const professionScenes = [
+  {
+    title: "Electrical work",
+    src: "/images/dashboard-professions/electrician.png",
+    alt: "Professional electrician installing a ceiling light fixture"
+  },
+  {
+    title: "Plumbing repairs",
+    src: "/images/dashboard-professions/plumber.png",
+    alt: "Professional plumber repairing pipes under a kitchen sink"
+  },
+  {
+    title: "Carpentry",
+    src: "/images/dashboard-professions/carpenter.png",
+    alt: "Professional carpenter measuring a wooden cabinet panel"
+  },
+  {
+    title: "Home cleaning",
+    src: "/images/dashboard-professions/cleaner.png",
+    alt: "Professional cleaner steam cleaning a sofa"
+  }
+];
+
+const clientScenes = [
+  {
+    title: "Review quotes",
+    src: "/images/dashboard-clients/quote-review.png",
+    alt: "Client reviewing a home service quote on a phone"
+  },
+  {
+    title: "Plan the work",
+    src: "/images/dashboard-clients/paint-consultation.png",
+    alt: "Client discussing paint colors with a professional painter"
+  },
+  {
+    title: "Inspect progress",
+    src: "/images/dashboard-clients/finished-work.png",
+    alt: "Clients inspecting finished cabinetry work with a carpenter"
+  },
+  {
+    title: "Welcome pros",
+    src: "/images/dashboard-clients/cleaner-arrival.png",
+    alt: "Client welcoming a professional cleaner at the doorway"
+  }
+];
 
 export function LogoMark({ size = "md" }: { size?: "sm" | "md" | "lg" }) {
   const classes = {
@@ -39,50 +80,48 @@ export function BrandLockup({ compact = false }: { compact?: boolean }) {
 }
 
 export function WorkIllustration({ variant = "mixed" }: { variant?: "mixed" | "client" | "professional" }) {
-  const cards =
-    variant === "client"
-      ? [
-          { label: "Post job", icon: Building2, tone: "bg-teal-50 text-brand" },
-          { label: "Review pros", icon: UserRound, tone: "bg-amber-50 text-amber" },
-          { label: "Track progress", icon: Sparkles, tone: "bg-green-50 text-green" }
-        ]
-      : variant === "professional"
-        ? [
-            { label: "Plumbing", icon: Hammer, tone: "bg-teal-50 text-brand" },
-            { label: "Electrical", icon: PlugZap, tone: "bg-amber-50 text-amber" },
-            { label: "Design", icon: Paintbrush, tone: "bg-green-50 text-green" }
-          ]
-        : [
-            { label: "Clients", icon: Building2, tone: "bg-teal-50 text-brand" },
-            { label: "Artisans", icon: Hammer, tone: "bg-amber-50 text-amber" },
-            { label: "Specialists", icon: UserRound, tone: "bg-green-50 text-green" }
-          ];
+  const [activeIndex, setActiveIndex] = useState(0);
+  const scenes = variant === "client" ? clientScenes : professionScenes;
+  const eyebrow = variant === "client" ? "Find skilled help" : variant === "professional" ? "Work across trades" : "Skilled local work";
+
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      setActiveIndex((current) => (current + 1) % scenes.length);
+    }, 4200);
+
+    return () => window.clearInterval(timer);
+  }, [scenes.length]);
 
   return (
-    <div className="relative overflow-hidden rounded-lg border border-line bg-white p-5 shadow-sm">
-      <div className="absolute right-4 top-4 rounded-md border border-line px-3 py-1 text-xs font-semibold text-muted">
-        Illustration slot
-      </div>
-      <div className="mt-8 grid gap-3">
-        {cards.map((card, index) => {
-          const Icon = card.icon;
-          return (
-            <div className={`flex items-center gap-3 rounded-lg border border-line p-4 ${index === 1 ? "ml-8" : ""}`} key={card.label}>
-              <div className={`grid h-12 w-12 place-items-center rounded-md ${card.tone}`}>
-                <Icon size={22} />
-              </div>
-              <div>
-                <p className="font-semibold text-ink">{card.label}</p>
-                <p className="text-sm text-muted">Cartoon image placeholder</p>
-              </div>
-            </div>
-          );
-        })}
-      </div>
-      <div className="mt-5 rounded-md bg-slate-50 p-4">
-        <p className="text-sm leading-6 text-muted">
-          Replace this area with friendly cartoon artwork showing artisans, service workers, office professionals, and clients working together.
-        </p>
+    <div className="relative overflow-hidden rounded-lg">
+      <div className="relative aspect-[16/10] min-h-[280px] overflow-hidden rounded-lg bg-slate-100 sm:min-h-[320px] xl:min-h-[360px]">
+        {scenes.map((scene, index) => (
+          <Image
+            alt={scene.alt}
+            className={`object-cover transition-opacity duration-700 ease-out ${index === activeIndex ? "opacity-100" : "opacity-0"}`}
+            fill
+            key={scene.src}
+            priority={index === 0}
+            quality={95}
+            sizes="(min-width: 1280px) 360px, (min-width: 768px) 42vw, 100vw"
+            src={scene.src}
+          />
+        ))}
+        <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/60 via-black/15 to-transparent p-5 text-white">
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-white/75">{eyebrow}</p>
+          <h2 className="mt-2 text-xl font-semibold">{scenes[activeIndex].title}</h2>
+          <div className="mt-4 flex gap-2" aria-label="Profession carousel progress">
+            {scenes.map((scene, index) => (
+              <button
+                aria-label={`Show ${scene.title}`}
+                className={`h-2 rounded-full transition-all ${index === activeIndex ? "w-8 bg-white" : "w-2 bg-white/50"}`}
+                key={scene.title}
+                onClick={() => setActiveIndex(index)}
+                type="button"
+              />
+            ))}
+          </div>
+        </div>
       </div>
     </div>
   );

@@ -61,9 +61,9 @@ export default function NewJobPage() {
     <AppShell>
       <div className="mb-6">
         <p className="text-sm font-medium text-brand">Client workspace</p>
-        <h1 className="mt-1 text-3xl font-semibold text-ink">Post a job</h1>
+        <h1 className="mt-1 text-2xl font-semibold text-ink sm:text-3xl">Post a job</h1>
       </div>
-      <form className="rounded-lg border border-line bg-white p-5 shadow-sm" onSubmit={submit}>
+      <form className="rounded-lg border border-line bg-white p-4 shadow-sm sm:p-5" onSubmit={submit}>
         <div className="grid gap-4 md:grid-cols-2">
           <TextField className="md:col-span-2" label="Job title" name="title" placeholder="Bathroom leak repair" required />
           <SelectField label="Category" name="category_id" required>

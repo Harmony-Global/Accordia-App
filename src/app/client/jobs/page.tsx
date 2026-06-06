@@ -79,7 +79,7 @@ function JobEngagementPanel({ jobId }: { jobId: string | null }) {
   }
 
   return (
-    <aside className="rounded-lg border border-line bg-slate-50 p-5">
+    <aside className="rounded-lg border border-line bg-slate-50 p-4 sm:p-5">
       <h2 className="font-semibold text-ink">Job activity</h2>
       {loading ? <p className="mt-4 inline-flex items-center gap-2 text-sm text-muted"><Spinner /> Loading activity</p> : null}
       {error ? <div className="mt-4"><Alert>{error}</Alert></div> : null}
@@ -125,28 +125,28 @@ export default function ClientJobsPage() {
 
   return (
     <AppShell>
-      <div className="mb-6 flex items-end justify-between gap-4">
+      <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
         <div>
           <p className="text-sm font-medium text-brand">Client workspace</p>
-          <h1 className="mt-1 text-3xl font-semibold text-ink">My jobs</h1>
+          <h1 className="mt-1 text-2xl font-semibold text-ink sm:text-3xl">My jobs</h1>
         </div>
-        <Link className="rounded-md bg-brand px-4 py-3 font-medium text-white" href="/client/jobs/new">
+        <Link className="rounded-md bg-brand px-4 py-3 text-sm font-medium text-white sm:text-base" href="/client/jobs/new">
           Post job
         </Link>
       </div>
       {error ? <div className="mb-4"><Alert>{error}</Alert></div> : null}
       {jobs.length === 0 ? <EmptyState title="No jobs yet" body="Post your first job and start receiving applications." /> : null}
-      <div className="grid gap-5 lg:grid-cols-[1fr_420px]">
+      <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_420px]">
         <div className="space-y-4">
           {jobs.map((job) => (
-            <article className={`rounded-lg border bg-white p-5 shadow-sm ${selectedJobId === job.id ? "border-brand ring-2 ring-teal-100" : "border-line"}`} key={job.id}>
+            <article className={`rounded-lg border bg-white p-4 shadow-sm sm:p-5 ${selectedJobId === job.id ? "border-brand ring-2 ring-teal-100" : "border-line"}`} key={job.id}>
               <div className="flex flex-wrap justify-between gap-3">
-                <div>
+                <div className="min-w-0">
                   <StatusPill>{job.categories?.name ?? "General service"}</StatusPill>
-                  <h2 className="mt-1 text-xl font-semibold text-ink">{job.title}</h2>
+                  <h2 className="mt-1 text-lg font-semibold text-ink sm:text-xl">{job.title}</h2>
                   <p className="mt-2 text-sm leading-6 text-muted">{job.description}</p>
                 </div>
-                <div className="grid grid-cols-3 gap-2 text-center text-sm">
+                <div className="grid w-full grid-cols-3 gap-2 text-center text-sm sm:w-auto">
                   <button className="rounded-md bg-slate-50 px-3 py-2 font-medium text-ink hover:bg-teal-50" onClick={() => setSelectedJobId(job.id)} type="button">
                     {job.status}
                     <span className="block text-xs text-muted">status</span>

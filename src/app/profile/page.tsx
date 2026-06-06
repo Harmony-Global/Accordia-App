@@ -197,10 +197,10 @@ export default function ProfilePage() {
       {loading && !profile ? <PageLoader /> : null}
       {loadError ? <Alert>{loadError}</Alert> : null}
       {profile ? (
-        <div className="grid gap-5 lg:grid-cols-[1fr_360px]">
-          <form className="rounded-lg border border-line bg-white p-6 shadow-sm" onSubmit={saveProfile}>
+        <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_360px]">
+          <form className="rounded-lg border border-line bg-white p-4 shadow-sm sm:p-6" onSubmit={saveProfile}>
             <p className="text-sm font-medium text-brand">Profile</p>
-            <h1 className="mt-1 text-3xl font-semibold text-ink">Keep your account details current</h1>
+            <h1 className="mt-1 text-2xl font-semibold text-ink sm:text-3xl">Keep your account details current</h1>
             <p className="mt-2 text-sm leading-6 text-muted">
               These details shape your workspace, job conversations, and trust signals.
             </p>
@@ -242,7 +242,7 @@ export default function ProfilePage() {
 
             {profile.role === "professional" ? (
               <div className="mt-7 border-t border-line pt-6">
-                <div className="flex items-start justify-between gap-4">
+                <div className="flex flex-wrap items-start justify-between gap-4">
                   <div>
                     <h2 className="text-lg font-semibold text-ink">Professional profile</h2>
                     <p className="mt-1 text-sm leading-6 text-muted">
@@ -273,7 +273,7 @@ export default function ProfilePage() {
           </form>
 
           <aside className="grid content-start gap-5">
-            <Card className="p-5">
+            <Card className="p-4 sm:p-5">
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <p className="text-sm font-medium text-brand">Trust status</p>
@@ -322,7 +322,7 @@ export default function ProfilePage() {
               ) : null}
             </Card>
 
-            <Card className="p-5">
+            <Card className="p-4 sm:p-5">
               <div className="flex items-center gap-3">
                 <Clock3 className="text-muted" size={20} />
                 <h2 className="font-semibold text-ink">Account role</h2>
