@@ -1,29 +1,87 @@
 "use client";
 
 import Link from "next/link";
-import { Camera, CheckCircle2, Clock3, ShieldCheck, UserRound } from "lucide-react";
+import { Camera, CheckCircle2, Clock3, ImagePlus, PackageCheck, ShieldCheck, Trash2, UserRound } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { AppShell } from "@/components/app-shell";
 import { useSession } from "@/components/session-provider";
-import { Alert, Button, Card, PageLoader, Spinner, StatusPill, TextAreaField, TextField } from "@/components/ui";
+import { Alert, Button, Card, PageLoader, SelectField, Spinner, StatusPill, TextAreaField, TextField } from "@/components/ui";
 import { useToast } from "@/components/toast";
 import { useProfile } from "@/hooks/use-auth";
-import { updateMyProfile } from "@/services/profile-service";
+import { useCategories } from "@/hooks/use-categories";
+import {
+  createProfessionalService,
+  deleteProfessionalService,
+  updateMyProfile,
+  updateProfessionalService,
+  uploadProfessionalServiceImage
+} from "@/services/profile-service";
 import { confirmPhoneVerification, getMyVerifications, startPhoneVerification } from "@/services/verification-service";
-import type { ProfessionalProfile, Verification } from "@/types";
+import type { Category, ProfessionalProfile, ProfessionalService, Verification } from "@/types";
 
 function getProfessionalProfile(profile: ReturnType<typeof useProfile>["profile"]): ProfessionalProfile | null {
   if (!profile?.professional_profiles) return null;
   return Array.isArray(profile.professional_profiles) ? profile.professional_profiles[0] ?? null : profile.professional_profiles;
 }
 
+function ServiceCard({
+  service,
+  onToggle,
+  onDelete,
+  busy
+}: {
+  service: ProfessionalService;
+  onToggle: (service: ProfessionalService) => void;
+  onDelete: (service: ProfessionalService) => void;
+  busy: boolean;
+}) {
+  return (
+    <article className="overflow-hidden rounded-lg border border-line bg-white shadow-sm">
+      <div className="relative aspect-[16/9] bg-slate-100">
+        <img alt={service.title} className="h-full w-full object-cover" src={service.image_url} />
+        <span className="absolute left-3 top-3">
+          <StatusPill tone={service.is_active ? "green" : "gray"}>{service.is_active ? "Active" : "Hidden"}</StatusPill>
+        </span>
+      </div>
+      <div className="p-4">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-xs font-bold uppercase text-brand">{service.offering_type}</p>
+            <h3 className="mt-1 font-semibold text-ink">{service.title}</h3>
+          </div>
+          <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-muted">
+            {service.category?.name ?? "No category"}
+          </span>
+        </div>
+        <p className="mt-2 line-clamp-3 text-sm leading-6 text-muted">{service.description}</p>
+        <p className="mt-3 text-sm font-semibold text-ink">
+          {service.currency} {service.price_min.toLocaleString()} - {service.price_max.toLocaleString()}
+        </p>
+        <div className="mt-4 flex flex-wrap gap-2">
+          <Button disabled={busy} onClick={() => onToggle(service)} type="button" variant="secondary">
+            {service.is_active ? "Hide" : "Make active"}
+          </Button>
+          <Button disabled={busy} onClick={() => onDelete(service)} type="button" variant="warning">
+            <Trash2 size={16} />
+            Delete
+          </Button>
+        </div>
+      </div>
+    </article>
+  );
+}
+
 export default function ProfilePage() {
   const { profile, error: loadError, loading, token, refresh } = useProfile();
   const { updateProfile } = useSession();
+  const { categories, selectedCategoryIds } = useCategories();
   const showToast = useToast();
   const [verifications, setVerifications] = useState<Verification[]>([]);
+  const [services, setServices] = useState<ProfessionalService[]>([]);
   const [verificationLoading, setVerificationLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [serviceSaving, setServiceSaving] = useState(false);
+  const [serviceBusyId, setServiceBusyId] = useState("");
   const [otpSending, setOtpSending] = useState(false);
   const [otpChecking, setOtpChecking] = useState(false);
   const [error, setError] = useState("");
@@ -31,10 +89,20 @@ export default function ProfilePage() {
   const [avatarPreview, setAvatarPreview] = useState("");
 
   const professionalProfile = useMemo(() => getProfessionalProfile(profile), [profile]);
+  const availableServiceCategories = useMemo(
+    () => categories.filter((category) => selectedCategoryIds.includes(category.id)),
+    [categories, selectedCategoryIds]
+  );
+  const activeServiceCount = services.filter((service) => service.is_active).length;
   const phoneVerification = verifications.find((item) => item.type === "phone");
+
   useEffect(() => {
     setAvatarPreview(profile?.avatar_url ?? "");
   }, [profile?.avatar_url]);
+
+  useEffect(() => {
+    setServices(professionalProfile?.professional_services ?? []);
+  }, [professionalProfile?.professional_services]);
 
   async function loadVerifications() {
     if (!token) return;
@@ -64,7 +132,6 @@ export default function ProfilePage() {
 
     const form = new FormData(event.currentTarget);
     const yearsExperience = String(form.get("years_experience") ?? "");
-    const hourlyRate = String(form.get("hourly_rate") ?? "");
 
     try {
       await updateMyProfile(token, {
@@ -77,7 +144,6 @@ export default function ProfilePage() {
         professional_profile: profile?.role === "professional" ? {
           bio: String(form.get("bio") ?? "") || null,
           years_experience: yearsExperience ? Number(yearsExperience) : undefined,
-          hourly_rate: hourlyRate ? Number(hourlyRate) : null,
           location: String(form.get("location") ?? "") || null,
           state: String(form.get("state") ?? "") || null,
           is_available: form.get("is_available") === "on"
@@ -192,6 +258,100 @@ export default function ProfilePage() {
     }
   }
 
+  async function saveService(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!token) return;
+
+    const form = new FormData(event.currentTarget);
+    const file = form.get("service_image");
+
+    if (!(file instanceof File) || file.size === 0) {
+      const message = "Upload one image for this service or product.";
+      setError(message);
+      showToast({ tone: "error", title: "Service image required", body: message });
+      return;
+    }
+
+    const priceMin = Number(form.get("price_min"));
+    const priceMax = Number(form.get("price_max"));
+    if (priceMax < priceMin) {
+      const message = "Maximum price must be greater than or equal to minimum price.";
+      setError(message);
+      showToast({ tone: "error", title: "Check price range", body: message });
+      return;
+    }
+
+    setServiceSaving(true);
+    setError("");
+
+    try {
+      const image = await uploadProfessionalServiceImage(token, file);
+      const response = await createProfessionalService(token, {
+        category_id: String(form.get("category_id") || "") || null,
+        offering_type: String(form.get("offering_type")) as "service" | "product",
+        title: String(form.get("title")),
+        description: String(form.get("description")),
+        image_url: image.image_url,
+        price_min: priceMin,
+        price_max: priceMax,
+        currency: String(form.get("currency") || "NGN"),
+        is_active: form.get("is_active") === "on"
+      });
+      setServices((current) => [response.service, ...current]);
+      showToast({
+        tone: "success",
+        title: "Offering added",
+        body: response.has_minimum_services
+          ? "Your service portfolio has the minimum five active offerings."
+          : `${response.service_count}/${response.minimum_required} active offerings added.`
+      });
+      event.currentTarget.reset();
+      await refresh();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Could not save service";
+      setError(message);
+      showToast({ tone: "error", title: "Could not save offering", body: message });
+    } finally {
+      setServiceSaving(false);
+    }
+  }
+
+  async function toggleService(service: ProfessionalService) {
+    if (!token) return;
+    setServiceBusyId(service.id);
+
+    try {
+      const data = await updateProfessionalService(token, service.id, { is_active: !service.is_active });
+      setServices((current) => current.map((item) => item.id === service.id ? data.service : item));
+      showToast({ tone: "success", title: "Offering updated" });
+      await refresh();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Could not update service";
+      setError(message);
+      showToast({ tone: "error", title: "Could not update offering", body: message });
+    } finally {
+      setServiceBusyId("");
+    }
+  }
+
+  async function removeService(service: ProfessionalService) {
+    if (!token) return;
+    setServiceBusyId(service.id);
+
+    try {
+      await deleteProfessionalService(token, service.id);
+      setServices((current) => current.filter((item) => item.id !== service.id));
+      showToast({ tone: "success", title: "Offering deleted" });
+      await refresh();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Could not delete service";
+      setError(message);
+      showToast({ tone: "error", title: "Could not delete offering", body: message });
+    } finally {
+      setServiceBusyId("");
+    }
+  }
+
   return (
     <AppShell>
       {loading && !profile ? <PageLoader /> : null}
@@ -258,7 +418,6 @@ export default function ProfilePage() {
                   <TextField defaultValue={professionalProfile?.location ?? ""} label="Location" name="location" />
                   <TextField defaultValue={professionalProfile?.state ?? ""} label="State" name="state" />
                   <TextField defaultValue={professionalProfile?.years_experience ?? ""} label="Years experience" min={0} name="years_experience" type="number" />
-                  <TextField defaultValue={professionalProfile?.hourly_rate ?? ""} label="Typical hourly rate" min={0} name="hourly_rate" type="number" />
                 </div>
                 <label className="mt-4 flex items-center gap-3 rounded-md border border-line bg-slate-50 px-3 py-3 text-sm font-medium text-ink">
                   <input defaultChecked={professionalProfile?.is_available ?? true} name="is_available" type="checkbox" />
@@ -272,7 +431,81 @@ export default function ProfilePage() {
             </Button>
           </form>
 
-          <aside className="grid content-start gap-5">
+          {profile.role === "professional" ? (
+            <section className="rounded-lg border border-line bg-white p-4 shadow-sm sm:p-6 xl:col-span-2">
+              <div className="flex flex-wrap items-start justify-between gap-4">
+                <div>
+                  <p className="text-sm font-medium text-brand">Portfolio</p>
+                  <h2 className="mt-1 text-2xl font-semibold text-ink">Services and products</h2>
+                  <p className="mt-2 max-w-2xl text-sm leading-6 text-muted">
+                    Add at least five active offerings so clients can understand what you do and how your pricing starts.
+                  </p>
+                </div>
+                <div className="rounded-lg border border-line bg-slate-50 px-4 py-3 text-sm font-semibold text-ink">
+                  {activeServiceCount}/5 active
+                  <span className="mt-1 block text-xs font-normal text-muted">
+                    {activeServiceCount >= 5 ? "Portfolio ready" : `${5 - activeServiceCount} more needed`}
+                  </span>
+                </div>
+              </div>
+
+              <form className="mt-6 grid gap-4 rounded-lg border border-line bg-slate-50 p-4 md:grid-cols-2" onSubmit={saveService}>
+                <TextField label="Title" name="title" placeholder="Deep cleaning package" required />
+                <SelectField label="Type" name="offering_type" required>
+                  <option value="service">Service</option>
+                  <option value="product">Product</option>
+                </SelectField>
+                <SelectField label="Category" name="category_id">
+                  <option value="">No category</option>
+                  {availableServiceCategories.map((category: Category) => (
+                    <option key={category.id} value={category.id}>{category.name}</option>
+                  ))}
+                </SelectField>
+                <TextField defaultValue="NGN" label="Currency" maxLength={3} name="currency" required />
+                <TextField label="Minimum price" min={0} name="price_min" required type="number" />
+                <TextField label="Maximum price" min={0} name="price_max" required type="number" />
+                <TextAreaField className="md:col-span-2" label="Description" name="description" placeholder="Describe what this includes..." required rows={4} />
+                <label className="block text-sm font-semibold text-ink md:col-span-2">
+                  Image
+                  <span className="mt-2 flex min-h-28 cursor-pointer items-center justify-center gap-2 rounded-md border border-dashed border-line bg-white px-3 py-4 text-sm text-muted hover:border-brand hover:text-brand">
+                    <ImagePlus size={18} />
+                    Upload one JPEG, PNG, or WebP image
+                  </span>
+                  <input accept="image/jpeg,image/png,image/webp" className="sr-only" name="service_image" required type="file" />
+                </label>
+                <label className="flex items-center gap-3 rounded-md border border-line bg-white px-3 py-3 text-sm font-medium text-ink">
+                  <input defaultChecked name="is_active" type="checkbox" />
+                  Show this offering on my profile
+                </label>
+                <div className="flex items-end md:justify-end">
+                  <Button disabled={serviceSaving} type="submit">
+                    {serviceSaving ? <span className="inline-flex items-center gap-2"><Spinner /> Saving</span> : "Add offering"}
+                  </Button>
+                </div>
+              </form>
+
+              <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                {services.map((service) => (
+                  <ServiceCard
+                    busy={serviceBusyId === service.id}
+                    key={service.id}
+                    onDelete={removeService}
+                    onToggle={toggleService}
+                    service={service}
+                  />
+                ))}
+                {services.length === 0 ? (
+                  <div className="rounded-lg border border-dashed border-line bg-slate-50 p-6 text-center md:col-span-2 xl:col-span-3">
+                    <PackageCheck className="mx-auto text-muted" size={28} />
+                    <h3 className="mt-3 font-semibold text-ink">No offerings yet</h3>
+                    <p className="mt-1 text-sm text-muted">Add your first service or product to start building your client-facing profile.</p>
+                  </div>
+                ) : null}
+              </div>
+            </section>
+          ) : null}
+
+          <aside className="grid content-start gap-5 xl:col-start-2 xl:row-start-1">
             <Card className="p-4 sm:p-5">
               <div className="flex items-start justify-between gap-3">
                 <div>

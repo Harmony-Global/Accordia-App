@@ -240,9 +240,6 @@ export default function ProfessionalJobsPage() {
                     <h3 className="mt-1 text-lg font-semibold text-ink sm:text-xl">{job.title}</h3>
                     <p className="mt-2 max-w-3xl text-sm leading-6 text-muted">{job.description}</p>
                   </div>
-                  <div className="rounded-md bg-slate-50 px-3 py-2 text-sm font-medium text-ink">
-                    {job.currency} {job.budget_min ?? 0} - {job.budget_max ?? 0}
-                  </div>
                 </div>
                 <TextAreaField
                   className="mt-4"
