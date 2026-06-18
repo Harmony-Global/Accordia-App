@@ -46,6 +46,8 @@ export default function ProfessionalJobsPage() {
   const [applyingJobId, setApplyingJobId] = useState("");
   const [savingApplicationId, setSavingApplicationId] = useState("");
   const [error, setError] = useState("");
+  const appliedJobIds = new Set(applications.map((application) => application.job_id));
+  const availableJobs = jobs.filter((job) => !appliedJobIds.has(job.id));
 
   async function apply(jobId: string) {
     setError("");
@@ -230,18 +232,15 @@ export default function ProfessionalJobsPage() {
             <h2 className="text-xl font-semibold text-ink">Available matched jobs</h2>
             <p className="mt-1 text-sm text-muted">New matches you have not applied to yet.</p>
           </div>
-          {jobs.length === 0 ? <EmptyState title="No new matched jobs" body="You can still manage your existing applications above." /> : null}
+          {availableJobs.length === 0 ? <EmptyState title="No new matched jobs" body="You can still manage your existing applications above." /> : null}
           <div className="space-y-4">
-            {jobs.map((job) => (
+            {availableJobs.map((job) => (
               <article className="rounded-lg border border-line bg-white p-4 shadow-sm sm:p-5" key={job.id}>
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div className="min-w-0">
                     <StatusPill>{job.categories?.name ?? "General service"}</StatusPill>
                     <h3 className="mt-1 text-lg font-semibold text-ink sm:text-xl">{job.title}</h3>
                     <p className="mt-2 max-w-3xl text-sm leading-6 text-muted">{job.description}</p>
-                  </div>
-                  <div className="rounded-md bg-slate-50 px-3 py-2 text-sm font-medium text-ink">
-                    {job.currency} {job.budget_min ?? 0} - {job.budget_max ?? 0}
                   </div>
                 </div>
                 <TextAreaField

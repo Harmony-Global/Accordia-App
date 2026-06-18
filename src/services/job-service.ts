@@ -5,9 +5,6 @@ export type CreateJobPayload = {
   title: string;
   description: string;
   category_id: string;
-  budget_min: number;
-  budget_max: number;
-  budget_type: "fixed" | "hourly";
   location: string;
   state: string;
   is_remote: boolean;
@@ -72,5 +69,13 @@ export function updateApplication(
     token,
     method: "PATCH",
     body: payload
+  });
+}
+
+export function awardApplication(token: string, applicationId: string) {
+  return apiFetch<{ job_id: string }>(`/api/applications/${applicationId}/award`, {
+    token,
+    method: "POST",
+    body: {}
   });
 }

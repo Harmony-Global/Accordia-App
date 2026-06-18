@@ -27,9 +27,6 @@ export default function NewJobPage() {
         title: String(form.get("title")),
         description: String(form.get("description")),
         category_id: String(form.get("category_id")),
-        budget_min: Number(form.get("budget_min")),
-        budget_max: Number(form.get("budget_max")),
-        budget_type: String(form.get("budget_type")) as "fixed" | "hourly",
         location: String(form.get("location")),
         state: String(form.get("state")),
         is_remote: form.get("is_remote") === "on"
@@ -72,12 +69,6 @@ export default function NewJobPage() {
               <option key={category.id} value={category.id}>{category.name}</option>
             ))}
           </SelectField>
-          <SelectField label="Budget type" name="budget_type">
-            <option value="fixed">Fixed</option>
-            <option value="hourly">Hourly</option>
-          </SelectField>
-          <TextField label="Budget min" name="budget_min" required type="number" />
-          <TextField label="Budget max" name="budget_max" required type="number" />
           <TextField label="Location" name="location" placeholder="Lekki" />
           <TextField label="State" name="state" placeholder="Lagos" />
           <TextAreaField className="md:col-span-2" label="Description" name="description" placeholder="Describe the work clearly..." required rows={7} />

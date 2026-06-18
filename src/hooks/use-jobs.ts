@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useRequireAuth } from "@/hooks/use-auth";
 import {
   applyToJob,
+  awardApplication,
   createJob,
   getClientJobs,
   getJobApplications,
@@ -114,5 +115,12 @@ export function useJobEngagement(jobId: string | null) {
 
   useEffect(() => refresh(), [refresh]);
 
-  return { applications, views, error, loading, refresh };
+  async function award(applicationId: string) {
+    if (!token) throw new Error("You need to log in again");
+    const data = await awardApplication(token, applicationId);
+    refresh();
+    return data;
+  }
+
+  return { applications, views, error, loading, refresh, award };
 }
