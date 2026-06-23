@@ -5,7 +5,7 @@ import { Eye, EyeOff } from "lucide-react";
 import { useState } from "react";
 import { BrandLockup, StoryImageCarousel } from "@/components/brand";
 import { useToast } from "@/components/toast";
-import { Alert, Button, Spinner, TextField } from "@/components/ui";
+import { Button, Spinner, TextField } from "@/components/ui";
 import { useLoginAction } from "@/hooks/use-auth";
 
 export default function LoginPage() {
@@ -13,20 +13,18 @@ export default function LoginPage() {
   const showToast = useToast();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
 
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    setError("");
     setLoading(true);
 
     try {
       await login({ email, password });
+      showToast({ tone: "success", title: "Login successful", body: "Your workspace is ready." });
     } catch (err) {
       const message = err instanceof Error ? err.message : "Login failed";
-      setError(message);
       showToast({ tone: "error", title: "Login failed", body: message });
     } finally {
       setLoading(false);
@@ -55,14 +53,6 @@ export default function LoginPage() {
           <p className="font-editorial text-xl text-brand">Good to see you again.</p>
           <h1 className="mt-2 text-3xl font-semibold text-ink">Welcome back</h1>
           <p className="mt-2 text-sm font-light leading-6 text-muted">Continue to your workspace.</p>
-          {loading ? (
-            <div className="mt-5 rounded-md border border-teal-100 bg-teal-50 p-3 text-sm font-medium text-brand">
-              <span className="inline-flex items-center gap-2">
-                <Spinner />
-                Checking your details and opening your workspace...
-              </span>
-            </div>
-          ) : null}
           <TextField className="mt-7" label="Email" onChange={(e) => setEmail(e.target.value)} required type="email" value={email} />
           <label className="mt-4 block text-sm font-semibold text-ink">
             Password
@@ -84,12 +74,11 @@ export default function LoginPage() {
               </button>
             </div>
           </label>
-          {error ? <div className="mt-4"><Alert>{error}</Alert></div> : null}
           <Button className="mt-7 w-full" disabled={loading} type="submit">
             {loading ? (
               <span className="inline-flex items-center gap-2">
-                <Spinner />
-                Opening workspace
+                <Spinner className="h-6 w-6 border-[3px]" />
+                Logging in
               </span>
             ) : "Login"}
           </Button>

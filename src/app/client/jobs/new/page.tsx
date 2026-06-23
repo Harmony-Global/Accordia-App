@@ -1,29 +1,35 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { AppShell } from "@/components/app-shell";
-import { Alert, Button, PageLoader, SelectField, Spinner, TextAreaField, TextField } from "@/components/ui";
+import { Button, SelectField, Spinner, TextAreaField, TextField } from "@/components/ui";
 import { useToast } from "@/components/toast";
 import { useCategories } from "@/hooks/use-categories";
-import { useClientJobs } from "@/hooks/use-jobs";
+import { useRequireAuth } from "@/hooks/use-auth";
+import { createJob } from "@/services/job-service";
 
 export default function NewJobPage() {
   const router = useRouter();
   const showToast = useToast();
+  const token = useRequireAuth();
   const { categories, error: categoryError, loading: categoriesLoading } = useCategories();
-  const { publishJob } = useClientJobs();
-  const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (categoryError) {
+      showToast({ tone: "error", title: "Categories unavailable", body: categoryError });
+    }
+  }, [categoryError, showToast]);
 
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    setError("");
     setLoading(true);
 
     const form = new FormData(event.currentTarget);
     try {
-      await publishJob({
+      if (!token) throw new Error("Your session has expired. Please log in again.");
+      await createJob(token, {
         title: String(form.get("title")),
         description: String(form.get("description")),
         category_id: String(form.get("category_id")),
@@ -39,19 +45,10 @@ export default function NewJobPage() {
       router.push("/client/jobs");
     } catch (err) {
       const message = err instanceof Error ? err.message : "Could not create job";
-      setError(message);
       showToast({ tone: "error", title: "Could not publish job", body: message });
     } finally {
       setLoading(false);
     }
-  }
-
-  if (categoriesLoading) {
-    return (
-      <AppShell>
-        <PageLoader />
-      </AppShell>
-    );
   }
 
   return (
@@ -63,8 +60,8 @@ export default function NewJobPage() {
       <form className="rounded-lg border border-line bg-white p-4 shadow-sm sm:p-5" onSubmit={submit}>
         <div className="grid gap-4 md:grid-cols-2">
           <TextField className="md:col-span-2" label="Job title" name="title" placeholder="Bathroom leak repair" required />
-          <SelectField label="Category" name="category_id" required>
-            <option value="">Select category</option>
+          <SelectField disabled={categoriesLoading || categories.length === 0} label="Category" name="category_id" required>
+            <option value="">{categoriesLoading ? "Loading categories..." : "Select category"}</option>
             {categories.map((category) => (
               <option key={category.id} value={category.id}>{category.name}</option>
             ))}
@@ -77,8 +74,6 @@ export default function NewJobPage() {
             Remote work
           </label>
         </div>
-        {categoryError ? <div className="mt-4"><Alert>{categoryError}</Alert></div> : null}
-        {error ? <div className="mt-4"><Alert>{error}</Alert></div> : null}
         <Button className="mt-5" disabled={loading} type="submit">
           {loading ? (
             <span className="inline-flex items-center gap-2">

@@ -4,6 +4,7 @@ import type {
   SelectHTMLAttributes,
   TextareaHTMLAttributes
 } from "react";
+import { Award, CircleX } from "lucide-react";
 
 export function Button({
   children,
@@ -20,6 +21,29 @@ export function Button({
   return (
     <button
       className={`inline-flex min-h-11 items-center justify-center rounded-md px-4 py-3 text-sm font-semibold shadow-sm transition duration-200 hover:-translate-y-0.5 hover:shadow-md active:translate-y-0 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0 disabled:hover:shadow-sm ${variants[variant]} ${className}`}
+      {...props}
+    >
+      {children}
+    </button>
+  );
+}
+
+export function IconButton({
+  children,
+  variant = "secondary",
+  className = "",
+  ...props
+}: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: "primary" | "secondary" | "warning" | "ghost" }) {
+  const variants = {
+    primary: "border-brand bg-brand text-white hover:bg-[#125A73]",
+    secondary: "border-line bg-white text-brand hover:border-brand hover:bg-teal-50",
+    warning: "border-amber bg-amber text-white hover:bg-[#D98E13]",
+    ghost: "border-line bg-white text-muted hover:border-brand hover:text-brand"
+  };
+
+  return (
+    <button
+      className={`grid h-11 w-11 shrink-0 place-items-center rounded-full border shadow-sm transition duration-200 hover:-translate-y-0.5 hover:shadow-md active:translate-y-0 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0 disabled:hover:shadow-sm ${variants[variant]} ${className}`}
       {...props}
     >
       {children}
@@ -98,7 +122,7 @@ export function Spinner({ className = "" }: { className?: string }) {
   return (
     <span
       aria-hidden="true"
-      className={`inline-block aspect-square h-4 w-4 shrink-0 animate-spin rounded-full border-2 border-current border-t-transparent ${className}`}
+      className={`inline-block aspect-square h-5 w-5 shrink-0 animate-spin rounded-full border-2 border-current border-t-transparent ${className}`}
     />
   );
 }
@@ -136,14 +160,40 @@ export function StatusPill({
   tone = "teal"
 }: {
   children: React.ReactNode;
-  tone?: "teal" | "green" | "amber" | "gray";
+  tone?: "teal" | "green" | "amber" | "gray" | "red";
 }) {
   const tones = {
     teal: "bg-teal-50 text-brand",
     green: "bg-green-50 text-green",
     amber: "bg-amber-50 text-amber",
-    gray: "bg-slate-100 text-muted"
+    gray: "bg-slate-100 text-muted",
+    red: "bg-red-50 text-red-700"
   };
 
-  return <span className={`inline-flex rounded-full px-3 py-1 text-xs font-bold ${tones[tone]}`}>{children}</span>;
+  return <span className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-bold ${tones[tone]}`}>{children}</span>;
+}
+
+export function ApplicationStatusPill({ status }: { status: string }) {
+  const normalizedStatus = status.toLowerCase();
+  const label = normalizedStatus.charAt(0).toUpperCase() + normalizedStatus.slice(1);
+
+  if (normalizedStatus === "awarded") {
+    return (
+      <StatusPill tone="green">
+        <Award className="mr-1" size={13} />
+        Awarded
+      </StatusPill>
+    );
+  }
+
+  if (normalizedStatus === "rejected") {
+    return (
+      <StatusPill tone="red">
+        <CircleX className="mr-1" size={13} />
+        Rejected
+      </StatusPill>
+    );
+  }
+
+  return <StatusPill>{label}</StatusPill>;
 }

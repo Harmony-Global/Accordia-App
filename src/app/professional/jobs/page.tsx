@@ -1,9 +1,9 @@
 "use client";
 
-import { useState } from "react";
-import { ImagePlus, PencilLine, Save, X } from "lucide-react";
+import { useEffect, useState } from "react";
+import { ImagePlus, PencilLine, Save, Send, X } from "lucide-react";
 import { AppShell, EmptyState } from "@/components/app-shell";
-import { Alert, Button, PageLoader, Spinner, StatusPill, TextAreaField, TextField } from "@/components/ui";
+import { ApplicationStatusPill, Button, IconButton, PageLoader, Spinner, StatusPill, TextAreaField, TextField } from "@/components/ui";
 import { useToast } from "@/components/toast";
 import { useMatchedJobs, useMyApplications } from "@/hooks/use-jobs";
 import type { Application } from "@/types";
@@ -36,6 +36,22 @@ function ReferenceImages({ images }: { images: string[] }) {
   );
 }
 
+function FileActionButton({
+  label,
+  onChange
+}: {
+  label: string;
+  onChange: (files: FileList | null) => void;
+}) {
+  return (
+    <label className="inline-flex min-h-11 w-full cursor-pointer items-center justify-center gap-2 rounded-md border border-line bg-white px-4 py-3 text-sm font-semibold text-ink shadow-sm transition duration-200 hover:-translate-y-0.5 hover:bg-slate-50 hover:shadow-md active:translate-y-0">
+        <ImagePlus size={18} />
+        {label}
+      <input accept="image/*" className="sr-only" multiple onChange={(event) => onChange(event.target.files)} type="file" />
+    </label>
+  );
+}
+
 export default function ProfessionalJobsPage() {
   const { jobs, error: loadError, loading, apply: submitApplication, refresh: refreshMatchedJobs } = useMatchedJobs();
   const { applications, error: applicationError, loading: applicationsLoading, saveApplication, refresh: refreshApplications } = useMyApplications();
@@ -45,12 +61,22 @@ export default function ProfessionalJobsPage() {
   const [editing, setEditing] = useState<Record<string, { pitch: string; proposed_rate: string; reference_image_urls: string[] }>>({});
   const [applyingJobId, setApplyingJobId] = useState("");
   const [savingApplicationId, setSavingApplicationId] = useState("");
-  const [error, setError] = useState("");
   const appliedJobIds = new Set(applications.map((application) => application.job_id));
   const availableJobs = jobs.filter((job) => !appliedJobIds.has(job.id));
 
+  useEffect(() => {
+    if (loadError) {
+      showToast({ tone: "error", title: "Could not load matched jobs", body: loadError });
+    }
+  }, [loadError, showToast]);
+
+  useEffect(() => {
+    if (applicationError) {
+      showToast({ tone: "error", title: "Could not load applications", body: applicationError });
+    }
+  }, [applicationError, showToast]);
+
   async function apply(jobId: string) {
-    setError("");
     setApplyingJobId(jobId);
 
     try {
@@ -64,7 +90,6 @@ export default function ProfessionalJobsPage() {
       refreshMatchedJobs();
     } catch (err) {
       const message = err instanceof Error ? err.message : "Could not apply";
-      setError(message);
       showToast({ tone: "error", title: "Application failed", body: message });
     } finally {
       setApplyingJobId("");
@@ -77,7 +102,6 @@ export default function ProfessionalJobsPage() {
       setReferencesByJob((current) => ({ ...current, [jobId]: images }));
     } catch (err) {
       const message = err instanceof Error ? err.message : "Could not add references";
-      setError(message);
       showToast({ tone: "error", title: "Reference upload failed", body: message });
     }
   }
@@ -94,7 +118,6 @@ export default function ProfessionalJobsPage() {
       }));
     } catch (err) {
       const message = err instanceof Error ? err.message : "Could not add references";
-      setError(message);
       showToast({ tone: "error", title: "Reference upload failed", body: message });
     }
   }
@@ -123,7 +146,6 @@ export default function ProfessionalJobsPage() {
     if (!draft) return;
 
     setSavingApplicationId(application.id);
-    setError("");
 
     try {
       await saveApplication(application.id, {
@@ -139,7 +161,6 @@ export default function ProfessionalJobsPage() {
       showToast({ tone: "success", title: "Application updated", body: "Your client-facing pitch has been refreshed." });
     } catch (err) {
       const message = err instanceof Error ? err.message : "Could not update application";
-      setError(message);
       showToast({ tone: "error", title: "Could not update application", body: message });
     } finally {
       setSavingApplicationId("");
@@ -160,10 +181,6 @@ export default function ProfessionalJobsPage() {
         <p className="text-sm font-medium text-brand">Professional workspace</p>
         <h1 className="mt-1 text-2xl font-semibold text-ink sm:text-3xl">Jobs and applications</h1>
       </div>
-      {loadError ? <div className="mb-4"><Alert>{loadError}</Alert></div> : null}
-      {applicationError ? <div className="mb-4"><Alert>{applicationError}</Alert></div> : null}
-      {error ? <div className="mb-4"><Alert>{error}</Alert></div> : null}
-
       <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(360px,0.9fr)]">
         <section className="min-w-0">
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
@@ -183,37 +200,33 @@ export default function ProfessionalJobsPage() {
                 <article className="rounded-lg border border-line bg-white p-4 shadow-sm sm:p-5" key={application.id}>
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div className="min-w-0">
-                      <StatusPill tone={application.status === "awarded" ? "green" : "teal"}>{application.status}</StatusPill>
+                      <ApplicationStatusPill status={application.status} />
                       <h3 className="mt-2 text-lg font-semibold text-ink sm:text-xl">{application.job?.title ?? "Applied job"}</h3>
                       <p className="mt-1 text-sm text-muted">{application.job?.category?.name ?? application.job?.categories?.name ?? "General service"}</p>
                     </div>
                     {draft ? (
-                      <button aria-label="Close edit form" className="grid h-10 w-10 place-items-center rounded-full border border-line text-muted hover:bg-slate-50 hover:text-ink" onClick={() => closeEditing(application.id)} type="button">
+                      <IconButton aria-label="Close edit form" onClick={() => closeEditing(application.id)} type="button" variant="ghost">
                         <X size={18} />
-                      </button>
+                      </IconButton>
                     ) : (
-                      <Button onClick={() => startEditing(application)} type="button" variant="secondary">
-                        <PencilLine size={16} />
-                        Edit
-                      </Button>
+                      <IconButton aria-label="Edit application" onClick={() => startEditing(application)} type="button">
+                        <PencilLine size={18} />
+                      </IconButton>
                     )}
                   </div>
                   {draft ? (
                     <div className="mt-4 grid gap-4">
                       <TextAreaField label="Pitch" onChange={(event) => setEditing((current) => ({ ...current, [application.id]: { ...draft, pitch: event.target.value } }))} rows={5} value={draft.pitch} />
                       <TextField label="Proposed rate" onChange={(event) => setEditing((current) => ({ ...current, [application.id]: { ...draft, proposed_rate: event.target.value } }))} type="number" value={draft.proposed_rate} />
-                      <label className="inline-flex w-fit cursor-pointer items-center gap-2 rounded-md border border-line px-4 py-3 text-sm font-semibold text-ink hover:bg-slate-50">
-                        <ImagePlus size={16} />
-                        Replace references
-                        <input accept="image/*" className="sr-only" multiple onChange={(event) => uploadApplicationReferences(application.id, event.target.files)} type="file" />
-                      </label>
+                      <FileActionButton label="Replace references" onChange={(files) => uploadApplicationReferences(application.id, files)} />
                       <ReferenceImages images={references} />
-                      <div className="flex flex-wrap gap-2">
-                        <Button disabled={savingApplicationId === application.id} onClick={() => save(application)} type="button">
-                          {savingApplicationId === application.id ? <span className="inline-flex items-center gap-2"><Spinner /> Saving</span> : <span className="inline-flex items-center gap-2"><Save size={16} /> Save application</span>}
-                        </Button>
-    
-                      </div>
+                      <Button className="w-full" disabled={savingApplicationId === application.id} onClick={() => save(application)} type="button">
+                        {savingApplicationId === application.id ? (
+                          <span className="inline-flex items-center gap-2"><Spinner /> Saving application</span>
+                        ) : (
+                          <span className="inline-flex items-center gap-2"><Save size={18} /> Save application</span>
+                        )}
+                      </Button>
                     </div>
                   ) : (
                     <>
@@ -251,14 +264,16 @@ export default function ProfessionalJobsPage() {
                   rows={5}
                   value={pitchByJob[job.id] ?? ""}
                 />
-                <label className="mt-3 inline-flex cursor-pointer items-center gap-2 rounded-md border border-line px-4 py-3 text-sm font-semibold text-ink hover:bg-slate-50">
-                  <ImagePlus size={16} />
-                  Add references
-                  <input accept="image/*" className="sr-only" multiple onChange={(event) => uploadReferences(job.id, event.target.files)} type="file" />
-                </label>
+                <div className="mt-3">
+                  <FileActionButton label="Add references" onChange={(files) => uploadReferences(job.id, files)} />
+                </div>
                 <ReferenceImages images={referencesByJob[job.id] ?? []} />
-                <Button className="mt-3" disabled={applyingJobId === job.id} onClick={() => apply(job.id)} type="button">
-                  {applyingJobId === job.id ? <span className="inline-flex items-center gap-2"><Spinner /> Applying</span> : "Apply"}
+                <Button className="mt-3 w-full" disabled={applyingJobId === job.id} onClick={() => apply(job.id)} type="button">
+                  {applyingJobId === job.id ? (
+                    <span className="inline-flex items-center gap-2"><Spinner /> Applying</span>
+                  ) : (
+                    <span className="inline-flex items-center gap-2"><Send size={18} /> Apply now</span>
+                  )}
                 </Button>
               </article>
             ))}

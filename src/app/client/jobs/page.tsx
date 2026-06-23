@@ -1,10 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
-import { Award, Eye, FileText, UserRound } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Award, CheckCircle2, CircleX, Clock3, Eye, FileText, UserRound, X, type LucideIcon } from "lucide-react";
 import { AppShell, EmptyState } from "@/components/app-shell";
-import { Alert, Button, PageLoader, Spinner, StatusPill } from "@/components/ui";
+import { ApplicationStatusPill, Button, IconButton, PageLoader, Spinner, StatusPill } from "@/components/ui";
 import { useToast } from "@/components/toast";
 import { useClientJobs, useJobEngagement } from "@/hooks/use-jobs";
 import type { Application, JobView, ProfessionalProfile, ProfessionalService } from "@/types";
@@ -36,6 +36,48 @@ function getApplicantServices(application: Application): ProfessionalService[] {
   return professionalProfile?.professional_services?.filter((service) => service.is_active) ?? [];
 }
 
+function jobProgress(jobStatus: string) {
+  const status = jobStatus.toLowerCase();
+
+  if (["awarded", "accepted", "assigned", "completed"].includes(status)) {
+    return { Icon: CheckCircle2, label: status === "completed" ? "Completed" : "Accepted", tone: "green" as const };
+  }
+
+  if (status === "rejected") {
+    return { Icon: CircleX, label: "Rejected", tone: "red" as const };
+  }
+
+  if (["closed", "cancelled"].includes(status)) {
+    return { Icon: X, label: "Closed", tone: "gray" as const };
+  }
+
+  return { Icon: Clock3, label: "Open", tone: "teal" as const };
+}
+
+function MetricAction({
+  count,
+  icon: Icon,
+  label,
+  onClick
+}: {
+  count: number;
+  icon: LucideIcon;
+  label: string;
+  onClick: () => void;
+}) {
+  return (
+    <div className="flex min-w-0 items-center gap-3 rounded-md bg-slate-50/70 p-2">
+      <IconButton aria-label={`Open ${label.toLowerCase()}`} onClick={onClick} type="button">
+        <Icon size={18} />
+      </IconButton>
+      <div className="min-w-0">
+        <p className="text-lg font-semibold leading-5 text-ink">{count}</p>
+        <p className="text-xs font-medium text-muted">{label}</p>
+      </div>
+    </div>
+  );
+}
+
 function ApplicationRow({
   application,
   awarding,
@@ -57,7 +99,7 @@ function ApplicationRow({
             <h3 className="font-semibold text-ink">
               {application.professional?.first_name} {application.professional?.last_name}
             </h3>
-            <StatusPill tone={application.status === "awarded" ? "green" : "teal"}>{application.status}</StatusPill>
+            <ApplicationStatusPill status={application.status} />
           </div>
           <p className="mt-1 text-sm text-muted">
             {application.professional?.phone_verified ? "Phone verified" : "Phone not verified"}
@@ -108,10 +150,16 @@ function ViewRow({ view }: { view: JobView }) {
   );
 }
 
-function JobEngagementPanel({ jobId, onAwarded }: { jobId: string | null; onAwarded: () => void }) {
+function JobEngagementPanel({ jobId, onAwarded, onClose }: { jobId: string | null; onAwarded: () => void; onClose: () => void }) {
   const { applications, views, error, loading, award } = useJobEngagement(jobId);
   const showToast = useToast();
   const [awardingApplicationId, setAwardingApplicationId] = useState("");
+
+  useEffect(() => {
+    if (error) {
+      showToast({ tone: "error", title: "Could not load job activity", body: error });
+    }
+  }, [error, showToast]);
 
   async function awardJob(application: Application) {
     setAwardingApplicationId(application.id);
@@ -134,17 +182,26 @@ function JobEngagementPanel({ jobId, onAwarded }: { jobId: string | null; onAwar
 
   if (!jobId) {
     return (
-      <div className="rounded-lg border border-dashed border-line bg-white p-6 text-sm text-muted">
+      <div className="rounded-lg border border-dashed border-line bg-white p-6 text-sm text-muted shadow-sm">
         Select views or applications on a job to inspect activity.
       </div>
     );
   }
 
   return (
-    <aside className="rounded-lg border border-line bg-slate-50 p-4 sm:p-5">
-      <h2 className="font-semibold text-ink">Job activity</h2>
+    <aside className="max-h-[calc(100vh-5rem)] overflow-y-auto rounded-lg border border-line bg-white p-4 shadow-xl sm:p-5 xl:max-h-none xl:bg-slate-50 xl:shadow-sm">
+      <div className="flex items-center justify-between gap-3">
+        <h2 className="font-semibold text-ink">Job activity</h2>
+        <button
+          aria-label="Close job activity"
+          className="grid h-10 w-10 place-items-center rounded-full border border-line bg-white text-muted shadow-sm transition hover:border-brand hover:text-brand xl:hidden"
+          onClick={onClose}
+          type="button"
+        >
+          <X size={17} />
+        </button>
+      </div>
       {loading ? <p className="mt-4 inline-flex items-center gap-2 text-sm text-muted"><Spinner /> Loading activity</p> : null}
-      {error ? <div className="mt-4"><Alert>{error}</Alert></div> : null}
       {!loading ? (
         <div className="mt-4 grid gap-5">
           <section>
@@ -182,7 +239,14 @@ function JobEngagementPanel({ jobId, onAwarded }: { jobId: string | null; onAwar
 
 export default function ClientJobsPage() {
   const { jobs, error, loading, refresh } = useClientJobs();
+  const showToast = useToast();
   const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (error) {
+      showToast({ tone: "error", title: "Could not load jobs", body: error });
+    }
+  }, [error, showToast]);
 
   if (loading) {
     return (
@@ -199,41 +263,45 @@ export default function ClientJobsPage() {
           <p className="text-sm font-medium text-brand">Client workspace</p>
           <h1 className="mt-1 text-2xl font-semibold text-ink sm:text-3xl">My jobs</h1>
         </div>
-        <Link className="rounded-md bg-brand px-4 py-3 text-sm font-medium text-white sm:text-base" href="/client/jobs/new">
+        <Link className="inline-flex min-h-11 items-center justify-center rounded-md bg-brand px-4 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-[#125A73] sm:text-base" href="/client/jobs/new">
           Post job
         </Link>
       </div>
-      {error ? <div className="mb-4"><Alert>{error}</Alert></div> : null}
       {jobs.length === 0 ? <EmptyState title="No jobs yet" body="Post your first job and start receiving applications." /> : null}
       <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_420px]">
         <div className="space-y-4">
-          {jobs.map((job) => (
-            <article className={`rounded-lg border bg-white p-4 shadow-sm sm:p-5 ${selectedJobId === job.id ? "border-brand ring-2 ring-teal-100" : "border-line"}`} key={job.id}>
-              <div className="flex flex-wrap justify-between gap-3">
-                <div className="min-w-0">
-                  <StatusPill>{job.categories?.name ?? "General service"}</StatusPill>
-                  <h2 className="mt-1 text-lg font-semibold text-ink sm:text-xl">{job.title}</h2>
-                  <p className="mt-2 text-sm leading-6 text-muted">{job.description}</p>
+          {jobs.map((job) => {
+            const progress = jobProgress(job.status);
+            const ProgressIcon = progress.Icon;
+
+            return (
+              <article className={`rounded-lg border bg-white p-4 shadow-sm transition sm:p-5 ${selectedJobId === job.id ? "border-brand ring-2 ring-teal-100" : "border-line hover:border-slate-300"}`} key={job.id}>
+                <div className="flex flex-wrap justify-between gap-4">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <StatusPill>{job.categories?.name ?? "General service"}</StatusPill>
+                      <StatusPill tone={progress.tone}>
+                        <ProgressIcon size={13} />
+                        <span className="ml-1">{progress.label}</span>
+                      </StatusPill>
+                    </div>
+                    <h2 className="mt-2 text-lg font-semibold text-ink sm:text-xl">{job.title}</h2>
+                    <p className="mt-2 text-sm leading-6 text-muted">{job.description}</p>
+                  </div>
+                  <div className="grid w-full grid-cols-1 gap-2 text-sm sm:w-auto sm:min-w-[260px] sm:grid-cols-2">
+                    <MetricAction count={job.views_count} icon={Eye} label="Views" onClick={() => setSelectedJobId(job.id)} />
+                    <MetricAction count={job.applications_count} icon={FileText} label="Applications" onClick={() => setSelectedJobId(job.id)} />
+                  </div>
                 </div>
-                <div className="grid w-full grid-cols-3 gap-2 text-center text-sm sm:w-auto">
-                  <button className="rounded-md bg-slate-50 px-3 py-2 font-medium text-ink hover:bg-teal-50" onClick={() => setSelectedJobId(job.id)} type="button">
-                    {job.status}
-                    <span className="block text-xs text-muted">status</span>
-                  </button>
-                  <button className="rounded-md bg-slate-50 px-3 py-2 font-medium text-ink hover:bg-teal-50" onClick={() => setSelectedJobId(job.id)} type="button">
-                    {job.views_count}
-                    <span className="block text-xs text-muted">views</span>
-                  </button>
-                  <button className="rounded-md bg-slate-50 px-3 py-2 font-medium text-ink hover:bg-teal-50" onClick={() => setSelectedJobId(job.id)} type="button">
-                    {job.applications_count}
-                    <span className="block text-xs text-muted">apps</span>
-                  </button>
-                </div>
-              </div>
-            </article>
-          ))}
+              </article>
+            );
+          })}
         </div>
-        <JobEngagementPanel jobId={selectedJobId} onAwarded={refresh} />
+        <div className={`${selectedJobId ? "fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/40 p-4 pt-20 xl:static xl:z-auto xl:block xl:overflow-visible xl:bg-transparent xl:p-0" : "hidden xl:block"}`}>
+          <div className="w-full max-w-2xl xl:max-w-none">
+            <JobEngagementPanel jobId={selectedJobId} onAwarded={refresh} onClose={() => setSelectedJobId(null)} />
+          </div>
+        </div>
       </div>
     </AppShell>
   );

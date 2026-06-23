@@ -5,7 +5,7 @@ import { Eye, EyeOff } from "lucide-react";
 import { useState } from "react";
 import { BrandLockup, StoryImageCarousel } from "@/components/brand";
 import { useToast } from "@/components/toast";
-import { Alert, Button, Spinner, TextField } from "@/components/ui";
+import { Button, Spinner, TextField } from "@/components/ui";
 import { useRegisterAction } from "@/hooks/use-auth";
 import type { Role } from "@/types";
 
@@ -15,13 +15,11 @@ export default function RegisterPage() {
   const register = useRegisterAction();
   const showToast = useToast();
   const [role, setRole] = useState<RegisterRole>("client");
-  const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
 
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    setError("");
     setLoading(true);
 
     const form = new FormData(event.currentTarget);
@@ -38,7 +36,6 @@ export default function RegisterPage() {
       await register(payload);
     } catch (err) {
       const message = err instanceof Error ? err.message : "Registration failed";
-      setError(message);
       showToast({ tone: "error", title: "Registration failed", body: message });
     } finally {
       setLoading(false);
@@ -111,7 +108,6 @@ export default function RegisterPage() {
             </div>
           </label>
         </div>
-        {error ? <div className="mt-4"><Alert>{error}</Alert></div> : null}
         <Button className="mt-6 w-full" disabled={loading} type="submit">
           {loading ? (
             <span className="inline-flex items-center gap-2">

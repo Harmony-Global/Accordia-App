@@ -14,6 +14,30 @@ function requestUrl(path: string) {
   return `${API_URL}${path}`;
 }
 
+function friendlyApiMessage(path: string, response: Response, data: Record<string, unknown>) {
+  if (response.status === 401 && path.includes("/api/auth/login")) {
+    return "Wrong email or password.";
+  }
+
+  if (response.status === 401) {
+    return "Your session has expired. Please log in again.";
+  }
+
+  if (response.status === 403) {
+    return "You do not have permission to complete this action.";
+  }
+
+  if (response.status === 404) {
+    return "We could not find that page or service. Please refresh and try again.";
+  }
+
+  if (response.status >= 500) {
+    return "Unable to complete that request right now. Please try again shortly.";
+  }
+
+  return typeof data?.error === "string" ? data.error : "Request failed. Please try again.";
+}
+
 export async function apiFetch<T>(path: string, options: RequestOptions = {}): Promise<T> {
   const headers: HeadersInit = {
     "Content-Type": "application/json"
@@ -33,14 +57,13 @@ export async function apiFetch<T>(path: string, options: RequestOptions = {}): P
       cache: "no-store"
     });
   } catch {
-    throw new Error("Could not reach Accordia. Check your connection and make sure the backend is running.");
+    throw new Error("Unable to connect. Check your internet connection and try again.");
   }
 
   const data = await response.json().catch(() => ({}));
 
   if (!response.ok) {
-    const message = typeof data?.error === "string" ? data.error : "Request failed. Please try again.";
-    throw new Error(message);
+    throw new Error(friendlyApiMessage(path, response, data));
   }
 
   return data as T;
@@ -63,14 +86,13 @@ export async function apiFormData<T>(path: string, formData: FormData, token?: s
       cache: "no-store"
     });
   } catch {
-    throw new Error("Could not reach Accordia. Check your connection and make sure the backend is running.");
+    throw new Error("Unable to connect. Check your internet connection and try again.");
   }
 
   const data = await response.json().catch(() => ({}));
 
   if (!response.ok) {
-    const message = typeof data?.error === "string" ? data.error : "Request failed. Please try again.";
-    throw new Error(message);
+    throw new Error(friendlyApiMessage(path, response, data));
   }
 
   return data as T;

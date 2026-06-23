@@ -5,7 +5,7 @@ import { Camera, CheckCircle2, Clock3, ImagePlus, PackageCheck, ShieldCheck, Tra
 import { useEffect, useMemo, useState } from "react";
 import { AppShell } from "@/components/app-shell";
 import { useSession } from "@/components/session-provider";
-import { Alert, Button, Card, PageLoader, SelectField, Spinner, StatusPill, TextAreaField, TextField } from "@/components/ui";
+import { Button, Card, PageLoader, SelectField, Spinner, StatusPill, TextAreaField, TextField } from "@/components/ui";
 import { useToast } from "@/components/toast";
 import { useProfile } from "@/hooks/use-auth";
 import { useCategories } from "@/hooks/use-categories";
@@ -84,7 +84,7 @@ export default function ProfilePage() {
   const [serviceBusyId, setServiceBusyId] = useState("");
   const [otpSending, setOtpSending] = useState(false);
   const [otpChecking, setOtpChecking] = useState(false);
-  const [error, setError] = useState("");
+  const [, setError] = useState("");
   const [devCode, setDevCode] = useState("");
   const [avatarPreview, setAvatarPreview] = useState("");
 
@@ -103,6 +103,12 @@ export default function ProfilePage() {
   useEffect(() => {
     setServices(professionalProfile?.professional_services ?? []);
   }, [professionalProfile?.professional_services]);
+
+  useEffect(() => {
+    if (loadError) {
+      showToast({ tone: "error", title: "Could not load profile", body: loadError });
+    }
+  }, [loadError, showToast]);
 
   async function loadVerifications() {
     if (!token) return;
@@ -355,7 +361,6 @@ export default function ProfilePage() {
   return (
     <AppShell>
       {loading && !profile ? <PageLoader /> : null}
-      {loadError ? <Alert>{loadError}</Alert> : null}
       {profile ? (
         <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_360px]">
           <form className="rounded-lg border border-line bg-white p-4 shadow-sm sm:p-6" onSubmit={saveProfile}>

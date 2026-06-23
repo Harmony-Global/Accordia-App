@@ -11,7 +11,7 @@ export function useAuth() {
 
   function logout() {
     session.clear();
-    router.push("/login");
+    router.replace("/login");
   }
 
   return { token: session.token, role: session.role, profile: session.profile, logout };

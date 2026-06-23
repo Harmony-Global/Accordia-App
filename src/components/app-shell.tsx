@@ -9,6 +9,8 @@ import { useAuth } from "@/hooks/use-auth";
 import { getNotifications, markNotificationRead } from "@/services/notification-service";
 import type { Notification } from "@/types";
 
+let cachedUnreadNotifications: Notification[] = [];
+
 function navClass(isActive: boolean, variant: "default" | "primary" = "default") {
   if (variant === "primary") {
     return `rounded-md px-3 py-2 ${isActive ? "bg-brand text-white shadow-sm" : "bg-brand text-white hover:bg-[#125A73]"}`;
@@ -20,12 +22,16 @@ function navClass(isActive: boolean, variant: "default" | "primary" = "default")
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const { token, role, profile, logout } = useAuth();
-  const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [notifications, setNotifications] = useState<Notification[]>(cachedUnreadNotifications);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   useEffect(() => {
-    if (!token) return;
+    if (!token) {
+      cachedUnreadNotifications = [];
+      setNotifications([]);
+      return;
+    }
 
     let isMounted = true;
     const authToken = token;
@@ -33,11 +39,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     function loadNotifications() {
       getNotifications(authToken, true)
         .then((data) => {
+          cachedUnreadNotifications = data.notifications;
           if (isMounted) setNotifications(data.notifications);
         })
-        .catch(() => {
-          if (isMounted) setNotifications([]);
-        });
+        .catch(() => undefined);
     }
 
     loadNotifications();
@@ -52,6 +57,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   async function markAllRead() {
     if (!token) return;
     const unreadIds = notifications.filter((notification) => !notification.is_read).map((notification) => notification.id);
+    cachedUnreadNotifications = [];
     setNotifications([]);
     await Promise.allSettled(unreadIds.map((id) => markNotificationRead(token, id, true)));
   }
@@ -94,7 +100,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     >
       <Bell size={18} />
       {notifications.length > 0 ? (
-        <span className="absolute -right-2 -top-2 grid h-5 min-w-5 place-items-center rounded-full bg-red-600 px-1 text-[11px] font-bold leading-none text-white ring-2 ring-white">
+        <span className="absolute -right-1 -top-1 grid h-5 min-w-5 place-items-center rounded-full bg-red-600 px-1 text-[11px] font-bold leading-none text-white ring-2 ring-white">
           {notifications.length > 9 ? "9+" : notifications.length}
         </span>
       ) : null}
@@ -158,7 +164,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         ) : null}
       </header>
       {notificationsOpen ? (
-        <div className="fixed inset-x-4 top-20 z-50 max-h-[calc(100vh-6rem)] overflow-hidden rounded-lg border border-line bg-white shadow-xl sm:left-auto sm:w-[360px]">
+        <div className="fixed inset-x-4 top-[76px] z-[60] max-h-[calc(100vh-6rem)] overflow-hidden rounded-lg border border-line bg-white shadow-xl sm:left-auto sm:right-4 sm:w-[380px]">
           <div className="flex items-center justify-between gap-3 border-b border-line p-3">
             <p className="font-semibold text-ink">Notifications</p>
             {notifications.length > 0 ? (
