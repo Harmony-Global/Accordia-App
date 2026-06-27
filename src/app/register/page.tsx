@@ -7,6 +7,7 @@ import { BrandLockup, StoryImageCarousel } from "@/components/brand";
 import { useToast } from "@/components/toast";
 import { Button, Spinner, TextField } from "@/components/ui";
 import { useRegisterAction } from "@/hooks/use-auth";
+import { startGoogleOAuth } from "@/services/auth-service";
 import type { Role } from "@/types";
 
 type RegisterRole = Exclude<Role, "admin">;
@@ -16,6 +17,7 @@ export default function RegisterPage() {
   const showToast = useToast();
   const [role, setRole] = useState<RegisterRole>("client");
   const [loading, setLoading] = useState(false);
+  const [googleLoading, setGoogleLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
 
   async function submit(event: React.FormEvent<HTMLFormElement>) {
@@ -39,6 +41,20 @@ export default function RegisterPage() {
       showToast({ tone: "error", title: "Registration failed", body: message });
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function continueWithGoogle() {
+    setGoogleLoading(true);
+
+    try {
+      const redirectTo = `${window.location.origin}/auth/callback?mode=register&role=${role}`;
+      const data = await startGoogleOAuth(redirectTo);
+      window.location.assign(data.url);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Could not start Google registration";
+      showToast({ tone: "error", title: "Google registration failed", body: message });
+      setGoogleLoading(false);
     }
   }
 
@@ -121,14 +137,14 @@ export default function RegisterPage() {
           or
           <span className="h-px flex-1 bg-line" />
         </div>
-        <Button className="mt-5 w-full gap-3" type="button" variant="secondary">
+        <Button className="mt-5 w-full gap-3" disabled={googleLoading || loading} onClick={continueWithGoogle} type="button" variant="secondary">
           <svg aria-hidden="true" className="h-[18px] w-[18px]" viewBox="0 0 18 18">
             <path fill="#4285f4" d="M17.64 9.2c0-.64-.06-1.25-.16-1.84H9v3.48h4.84a4.14 4.14 0 0 1-1.8 2.72v2.26h2.9c1.7-1.56 2.7-3.86 2.7-6.62Z" />
             <path fill="#34a853" d="M9 18c2.43 0 4.47-.8 5.96-2.18l-2.9-2.26c-.8.54-1.84.86-3.06.86-2.35 0-4.34-1.58-5.05-3.72H.96v2.33A9 9 0 0 0 9 18Z" />
             <path fill="#fbbc05" d="M3.95 10.7a5.4 5.4 0 0 1 0-3.4V4.97H.96a9 9 0 0 0 0 8.06l2.99-2.33Z" />
             <path fill="#ea4335" d="M9 3.58c1.32 0 2.5.45 3.44 1.35l2.58-2.58C13.46.9 11.42 0 9 0A9 9 0 0 0 .96 4.97L3.95 7.3C4.66 5.16 6.65 3.58 9 3.58Z" />
           </svg>
-          Continue with Google
+          {googleLoading ? "Opening Google" : "Continue with Google"}
         </Button>
         <p className="mt-4 text-center text-sm text-muted">
           Already registered? <Link className="font-medium text-brand" href="/login">Login</Link>
