@@ -20,7 +20,7 @@ function readOAuthParams() {
   };
 }
 
-function routeAfterAuth(profile: Profile) {
+function routeAfterAuth(_profile: Profile) {
   return "/dashboard";
 }
 
@@ -39,17 +39,18 @@ export default function AuthCallbackPage() {
 
   function handleOAuthResponse(accessToken: string, data: OAuthProfileResponse) {
     if (data.profile) {
+      setLoading(true);
       session.setSession(accessToken, data.profile.role, data.profile);
       showToast({ tone: "success", title: "Google sign-in successful", body: "Your workspace is ready." });
       router.replace(routeAfterAuth(data.profile));
-      return;
+      return true;
     }
 
     if (data.needs_profile) {
       setEmail(data.user?.email ?? "");
       setFirstName(data.user?.first_name ?? "");
       setLastName(data.user?.last_name ?? "");
-      return;
+      return false;
     }
 
     throw new Error("Could not load your Accordia profile.");
@@ -75,7 +76,8 @@ export default function AuthCallbackPage() {
 
       try {
         const data = await completeOAuthProfile(params.accessToken);
-        handleOAuthResponse(params.accessToken, data);
+        const isRedirecting = handleOAuthResponse(params.accessToken, data);
+        if (isRedirecting) return;
       } catch (err) {
         const message = err instanceof Error ? err.message : "Could not finish Google sign-in";
         showToast({ tone: "error", title: "Google sign-in failed", body: message });
@@ -101,7 +103,8 @@ export default function AuthCallbackPage() {
         first_name: firstName,
         last_name: lastName
       });
-      handleOAuthResponse(token, data);
+      const isRedirecting = handleOAuthResponse(token, data);
+      if (isRedirecting) return;
     } catch (err) {
       const message = err instanceof Error ? err.message : "Could not complete profile";
       showToast({ tone: "error", title: "Profile setup failed", body: message });

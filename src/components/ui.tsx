@@ -119,10 +119,13 @@ export function Alert({
 }
 
 export function Spinner({ className = "" }: { className?: string }) {
+  const hasCustomSize = /\b(h-|w-|size-)/.test(className);
+  const hasCustomBorder = /\bborder-/.test(className);
+
   return (
     <span
       aria-hidden="true"
-      className={`inline-block aspect-square h-5 w-5 shrink-0 animate-spin rounded-full border-2 border-current border-t-transparent ${className}`}
+      className={`inline-block aspect-square shrink-0 animate-spin rounded-full border-current border-t-transparent ${hasCustomSize ? "" : "h-16 w-16"} ${hasCustomBorder ? "" : "border-[3px]"} ${className}`}
     />
   );
 }
@@ -131,7 +134,7 @@ export function LoadingPanel({ title, body }: { title: string; body?: string }) 
   return (
     <div className="rounded-lg border border-line bg-white p-6 shadow-sm">
       <div className="flex items-start gap-4">
-        <div className="grid h-10 w-10 place-items-center rounded-md bg-teal-50 text-brand">
+        <div className="grid h-20 w-20 shrink-0 place-items-center rounded-md bg-teal-50 text-brand">
           <Spinner />
         </div>
         <div>
@@ -146,7 +149,7 @@ export function LoadingPanel({ title, body }: { title: string; body?: string }) 
 export function PageLoader() {
   return (
     <div className="flex min-h-[55vh] items-center justify-center text-brand">
-      <Spinner className="h-20 w-20 border-[3px]" />
+      <Spinner className="h-24 w-24 border-4" />
     </div>
   );
 }

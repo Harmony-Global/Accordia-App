@@ -2,8 +2,10 @@
 
 import Link from "next/link";
 import { Eye, EyeOff } from "lucide-react";
-import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
 import { BrandLockup, StoryImageCarousel } from "@/components/brand";
+import { useSession } from "@/components/session-provider";
 import { useToast } from "@/components/toast";
 import { Button, Spinner, TextField } from "@/components/ui";
 import { useRegisterAction } from "@/hooks/use-auth";
@@ -13,12 +15,28 @@ import type { Role } from "@/types";
 type RegisterRole = Exclude<Role, "admin">;
 
 export default function RegisterPage() {
+  const router = useRouter();
+  const session = useSession();
   const register = useRegisterAction();
   const showToast = useToast();
   const [role, setRole] = useState<RegisterRole>("client");
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+
+  useEffect(() => {
+    if (session.ready && session.token) {
+      router.replace("/dashboard");
+    }
+  }, [router, session.ready, session.token]);
+
+  if (session.ready && session.token) {
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-[#f6f8fb] text-brand">
+        <Spinner className="h-24 w-24 border-4" />
+      </main>
+    );
+  }
 
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();

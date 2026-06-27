@@ -2,14 +2,18 @@
 
 import Link from "next/link";
 import { Eye, EyeOff } from "lucide-react";
-import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
 import { BrandLockup, StoryImageCarousel } from "@/components/brand";
+import { useSession } from "@/components/session-provider";
 import { useToast } from "@/components/toast";
 import { Button, Spinner, TextField } from "@/components/ui";
 import { useLoginAction } from "@/hooks/use-auth";
 import { startGoogleOAuth } from "@/services/auth-service";
 
 export default function LoginPage() {
+  const router = useRouter();
+  const session = useSession();
   const login = useLoginAction();
   const showToast = useToast();
   const [email, setEmail] = useState("");
@@ -17,6 +21,20 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+
+  useEffect(() => {
+    if (session.ready && session.token) {
+      router.replace("/dashboard");
+    }
+  }, [router, session.ready, session.token]);
+
+  if (session.ready && session.token) {
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-[#f6f8fb] text-brand">
+        <Spinner className="h-24 w-24 border-4" />
+      </main>
+    );
+  }
 
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
