@@ -170,6 +170,7 @@ function JobEngagementPanel({ jobId, onAwarded, onClose }: { jobId: string | nul
   const [awardingApplicationId, setAwardingApplicationId] = useState("");
   const [undoingApplicationId, setUndoingApplicationId] = useState("");
   const [sealing, setSealing] = useState(false);
+  const [sealPromptOpen, setSealPromptOpen] = useState(false);
   const selectedApplications = applications.filter((application) => application.status === "selected");
 
   useEffect(() => {
@@ -217,12 +218,6 @@ function JobEngagementPanel({ jobId, onAwarded, onClose }: { jobId: string | nul
   async function sealSelectedAwards() {
     if (selectedApplications.length === 0) return;
 
-    const confirmed = window.confirm(
-      `Seal awards for ${selectedApplications.length} professional${selectedApplications.length === 1 ? "" : "s"}? This will stop new applications and notify everyone who was not selected.`
-    );
-
-    if (!confirmed) return;
-
     setSealing(true);
 
     try {
@@ -239,6 +234,7 @@ function JobEngagementPanel({ jobId, onAwarded, onClose }: { jobId: string | nul
       showToast({ tone: "error", title: "Seal failed", body: message });
     } finally {
       setSealing(false);
+      setSealPromptOpen(false);
     }
   }
 
@@ -272,9 +268,52 @@ function JobEngagementPanel({ jobId, onAwarded, onClose }: { jobId: string | nul
               </p>
               <p className="mt-1 text-xs leading-5 text-muted">Seal awards when the final list is ready.</p>
             </div>
-            <Button className="w-full sm:w-auto" disabled={sealing} onClick={sealSelectedAwards} type="button">
+            <Button className="w-full sm:w-auto" disabled={sealing} onClick={() => setSealPromptOpen(true)} type="button">
               {sealing ? <span className="inline-flex items-center gap-2"><Spinner className="h-6 w-6 border-[3px]" /> Sealing</span> : <span className="inline-flex items-center gap-2"><CheckCircle2 size={16} /> Seal awards</span>}
             </Button>
+          </div>
+        </div>
+      ) : null}
+      {sealPromptOpen ? (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/50 p-4">
+          <div className="motion-panel w-full max-w-md rounded-lg border border-line bg-white p-5 shadow-xl">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-sm font-medium text-brand">Finalize awards</p>
+                <h3 className="mt-1 text-xl font-semibold text-ink">Seal selected professionals?</h3>
+              </div>
+              <button
+                aria-label="Close seal awards confirmation"
+                className="grid h-10 w-10 place-items-center rounded-full border border-line text-muted transition hover:border-brand hover:text-brand"
+                disabled={sealing}
+                onClick={() => setSealPromptOpen(false)}
+                type="button"
+              >
+                <X size={17} />
+              </button>
+            </div>
+            <p className="mt-4 text-sm leading-6 text-muted">
+              You are about to award this job to {selectedApplications.length} professional{selectedApplications.length === 1 ? "" : "s"}. This will stop new applications and notify applicants who were not selected.
+            </p>
+            <div className="mt-4 rounded-md bg-amber-50 p-3">
+              <p className="text-sm font-semibold text-ink">Selected professionals</p>
+              <ul className="mt-2 space-y-1 text-sm text-muted">
+                {selectedApplications.slice(0, 4).map((application) => (
+                  <li key={application.id}>
+                    {application.professional?.first_name} {application.professional?.last_name}
+                  </li>
+                ))}
+                {selectedApplications.length > 4 ? <li>+{selectedApplications.length - 4} more</li> : null}
+              </ul>
+            </div>
+            <div className="mt-5 grid gap-3 sm:grid-cols-2">
+              <Button disabled={sealing} onClick={() => setSealPromptOpen(false)} type="button" variant="secondary">
+                Keep reviewing
+              </Button>
+              <Button disabled={sealing} onClick={sealSelectedAwards} type="button">
+                {sealing ? <span className="inline-flex items-center gap-2"><Spinner className="h-6 w-6 border-[3px]" /> Sealing</span> : "Seal awards"}
+              </Button>
+            </div>
           </div>
         </div>
       ) : null}

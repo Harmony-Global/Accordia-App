@@ -15,6 +15,10 @@ function requestUrl(path: string) {
 }
 
 function friendlyApiMessage(path: string, response: Response, data: Record<string, unknown>) {
+  if (response.status === 422 && path.includes("/api/jobs/") && path.includes("/apply")) {
+    return "You need to attach supporting images for your application.";
+  }
+
   if (response.status === 401 && path.includes("/api/auth/login")) {
     return "Wrong email or password.";
   }

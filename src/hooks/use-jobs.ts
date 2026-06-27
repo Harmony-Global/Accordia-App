@@ -120,14 +120,14 @@ export function useJobEngagement(jobId: string | null) {
   async function award(applicationId: string) {
     if (!token) throw new Error("You need to log in again");
     const data = await awardApplication(token, applicationId);
-    setApplications((current) => current.map((item) => item.id === applicationId ? data.application : item));
+    setApplications((current) => current.map((item) => item.id === applicationId ? { ...item, ...data.application } : item));
     return data;
   }
 
   async function undoAward(applicationId: string) {
     if (!token) throw new Error("You need to log in again");
     const data = await undoAwardApplication(token, applicationId);
-    setApplications((current) => current.map((item) => item.id === applicationId ? data.application : item));
+    setApplications((current) => current.map((item) => item.id === applicationId ? { ...item, ...data.application } : item));
     return data;
   }
 

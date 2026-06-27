@@ -77,6 +77,15 @@ export default function ProfessionalJobsPage() {
   }, [applicationError, showToast]);
 
   async function apply(jobId: string) {
+    if ((referencesByJob[jobId] ?? []).length === 0) {
+      showToast({
+        tone: "error",
+        title: "Supporting images required",
+        body: "You need to attach supporting images for your application."
+      });
+      return;
+    }
+
     setApplyingJobId(jobId);
 
     try {
