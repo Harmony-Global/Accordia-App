@@ -4,7 +4,7 @@ import type {
   SelectHTMLAttributes,
   TextareaHTMLAttributes
 } from "react";
-import { Award, CircleX } from "lucide-react";
+import { Award, CircleX, Clock3 } from "lucide-react";
 
 export function Button({
   children,
@@ -178,7 +178,19 @@ export function StatusPill({
 
 export function ApplicationStatusPill({ status }: { status: string }) {
   const normalizedStatus = status.toLowerCase();
-  const label = normalizedStatus.charAt(0).toUpperCase() + normalizedStatus.slice(1);
+  const label = normalizedStatus
+    .split("_")
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+
+  if (normalizedStatus === "selected") {
+    return (
+      <StatusPill tone="amber">
+        <Clock3 className="mr-1" size={13} />
+        Selected
+      </StatusPill>
+    );
+  }
 
   if (normalizedStatus === "awarded") {
     return (
@@ -189,11 +201,11 @@ export function ApplicationStatusPill({ status }: { status: string }) {
     );
   }
 
-  if (normalizedStatus === "rejected") {
+  if (normalizedStatus === "rejected" || normalizedStatus === "not_awarded") {
     return (
       <StatusPill tone="red">
         <CircleX className="mr-1" size={13} />
-        Rejected
+        {normalizedStatus === "not_awarded" ? "Not awarded" : "Rejected"}
       </StatusPill>
     );
   }

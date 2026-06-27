@@ -11,6 +11,8 @@ import {
   getJobViews,
   getMatchedJobs,
   getMyApplications,
+  sealJobAwards,
+  undoAwardApplication,
   updateApplication,
   type CreateJobPayload
 } from "@/services/job-service";
@@ -118,9 +120,22 @@ export function useJobEngagement(jobId: string | null) {
   async function award(applicationId: string) {
     if (!token) throw new Error("You need to log in again");
     const data = await awardApplication(token, applicationId);
-    refresh();
+    setApplications((current) => current.map((item) => item.id === applicationId ? data.application : item));
     return data;
   }
 
-  return { applications, views, error, loading, refresh, award };
+  async function undoAward(applicationId: string) {
+    if (!token) throw new Error("You need to log in again");
+    const data = await undoAwardApplication(token, applicationId);
+    setApplications((current) => current.map((item) => item.id === applicationId ? data.application : item));
+    return data;
+  }
+
+  async function sealAwards() {
+    if (!token || !jobId) throw new Error("Select a job first");
+    const data = await sealJobAwards(token, jobId);
+    return data;
+  }
+
+  return { applications, views, error, loading, refresh, award, undoAward, sealAwards };
 }

@@ -88,7 +88,7 @@ export type Application = {
   pitch: string;
   proposed_rate: number | null;
   reference_image_urls: string[];
-  status: "pending" | "reviewed" | "shortlisted" | "rejected" | "awarded" | string;
+  status: "pending" | "reviewed" | "shortlisted" | "selected" | "awarded" | "not_awarded" | "rejected" | string;
   created_at: string;
   updated_at: string;
   job?: Job;

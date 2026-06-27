@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { Award, CheckCircle2, CircleX, Clock3, Eye, FileText, UserRound, X, type LucideIcon } from "lucide-react";
+import { Award, CheckCircle2, CircleX, Clock3, Eye, FileText, RotateCcw, UserRound, X, type LucideIcon } from "lucide-react";
 import { AppShell, EmptyState } from "@/components/app-shell";
 import { ApplicationStatusPill, Button, IconButton, PageLoader, Spinner, StatusPill } from "@/components/ui";
 import { useToast } from "@/components/toast";
@@ -81,14 +81,19 @@ function MetricAction({
 function ApplicationRow({
   application,
   awarding,
-  onAward
+  undoing,
+  onAward,
+  onUndo
 }: {
   application: Application;
   awarding: boolean;
+  undoing: boolean;
   onAward: (application: Application) => void;
+  onUndo: (application: Application) => void;
 }) {
   const services = getApplicantServices(application);
   const canAward = ["pending", "reviewed", "shortlisted"].includes(application.status);
+  const canUndo = application.status === "selected";
 
   return (
     <article className="rounded-md border border-line bg-white p-4">
@@ -125,9 +130,18 @@ function ApplicationRow({
               </div>
             </div>
           ) : null}
-          {canAward ? (
-            <Button className="mt-4" disabled={awarding} onClick={() => onAward(application)} type="button">
-              {awarding ? <span className="inline-flex items-center gap-2"><Spinner /> Awarding</span> : <span className="inline-flex items-center gap-2"><Award size={16} /> Award job</span>}
+          {canAward || canUndo ? (
+            <Button
+              className="mt-4 w-full sm:w-auto"
+              disabled={awarding || undoing}
+              onClick={() => canUndo ? onUndo(application) : onAward(application)}
+              type="button"
+              variant={canUndo ? "secondary" : "primary"}
+            >
+              {awarding ? <span className="inline-flex items-center gap-2"><Spinner className="h-6 w-6 border-[3px]" /> Awarding</span> : null}
+              {undoing ? <span className="inline-flex items-center gap-2"><Spinner className="h-6 w-6 border-[3px]" /> Undoing</span> : null}
+              {!awarding && !undoing && canUndo ? <span className="inline-flex items-center gap-2"><RotateCcw size={16} /> Undo award</span> : null}
+              {!awarding && !undoing && canAward ? <span className="inline-flex items-center gap-2"><Award size={16} /> Award</span> : null}
             </Button>
           ) : null}
         </div>
@@ -151,9 +165,12 @@ function ViewRow({ view }: { view: JobView }) {
 }
 
 function JobEngagementPanel({ jobId, onAwarded, onClose }: { jobId: string | null; onAwarded: () => void; onClose: () => void }) {
-  const { applications, views, error, loading, award } = useJobEngagement(jobId);
+  const { applications, views, error, loading, award, undoAward, sealAwards, refresh } = useJobEngagement(jobId);
   const showToast = useToast();
   const [awardingApplicationId, setAwardingApplicationId] = useState("");
+  const [undoingApplicationId, setUndoingApplicationId] = useState("");
+  const [sealing, setSealing] = useState(false);
+  const selectedApplications = applications.filter((application) => application.status === "selected");
 
   useEffect(() => {
     if (error) {
@@ -168,15 +185,60 @@ function JobEngagementPanel({ jobId, onAwarded, onClose }: { jobId: string | nul
       await award(application.id);
       showToast({
         tone: "success",
-        title: "Job awarded",
-        body: "Other applicants will be notified that the job is no longer accepting offers."
+        title: "Professional selected",
+        body: "You can still undo this before sealing the awards."
       });
-      onAwarded();
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Could not award job";
-      showToast({ tone: "error", title: "Award failed", body: message });
+      const message = err instanceof Error ? err.message : "Could not select professional";
+      showToast({ tone: "error", title: "Selection failed", body: message });
     } finally {
       setAwardingApplicationId("");
+    }
+  }
+
+  async function undoAwardSelection(application: Application) {
+    setUndoingApplicationId(application.id);
+
+    try {
+      await undoAward(application.id);
+      showToast({
+        tone: "success",
+        title: "Award undone",
+        body: "This professional is back in review."
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Could not undo award";
+      showToast({ tone: "error", title: "Undo failed", body: message });
+    } finally {
+      setUndoingApplicationId("");
+    }
+  }
+
+  async function sealSelectedAwards() {
+    if (selectedApplications.length === 0) return;
+
+    const confirmed = window.confirm(
+      `Seal awards for ${selectedApplications.length} professional${selectedApplications.length === 1 ? "" : "s"}? This will stop new applications and notify everyone who was not selected.`
+    );
+
+    if (!confirmed) return;
+
+    setSealing(true);
+
+    try {
+      await sealAwards();
+      showToast({
+        tone: "success",
+        title: "Awards sealed",
+        body: "Selected professionals were awarded and other applicants were notified."
+      });
+      refresh();
+      onAwarded();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Could not seal awards";
+      showToast({ tone: "error", title: "Seal failed", body: message });
+    } finally {
+      setSealing(false);
     }
   }
 
@@ -201,6 +263,21 @@ function JobEngagementPanel({ jobId, onAwarded, onClose }: { jobId: string | nul
           <X size={17} />
         </button>
       </div>
+      {selectedApplications.length > 0 ? (
+        <div className="mt-4 rounded-md border border-amber-100 bg-amber-50 p-3">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-sm font-semibold text-ink">
+                {selectedApplications.length} professional{selectedApplications.length === 1 ? "" : "s"} selected
+              </p>
+              <p className="mt-1 text-xs leading-5 text-muted">Seal awards when the final list is ready.</p>
+            </div>
+            <Button className="w-full sm:w-auto" disabled={sealing} onClick={sealSelectedAwards} type="button">
+              {sealing ? <span className="inline-flex items-center gap-2"><Spinner className="h-6 w-6 border-[3px]" /> Sealing</span> : <span className="inline-flex items-center gap-2"><CheckCircle2 size={16} /> Seal awards</span>}
+            </Button>
+          </div>
+        </div>
+      ) : null}
       {loading ? <p className="mt-4 inline-flex items-center gap-2 text-sm text-muted"><Spinner /> Loading activity</p> : null}
       {!loading ? (
         <div className="mt-4 grid gap-5">
@@ -215,8 +292,10 @@ function JobEngagementPanel({ jobId, onAwarded, onClose }: { jobId: string | nul
                 <ApplicationRow
                   application={application}
                   awarding={awardingApplicationId === application.id}
+                  undoing={undoingApplicationId === application.id}
                   key={application.id}
                   onAward={awardJob}
+                  onUndo={undoAwardSelection}
                 />
               ))}
             </div>
