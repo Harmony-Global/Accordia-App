@@ -13,18 +13,14 @@ type RegisterRole = Exclude<Role, "admin">;
 
 function readOAuthParams() {
   const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ""));
-  const searchParams = new URLSearchParams(window.location.search);
 
   return {
-    accessToken: hashParams.get("access_token") ?? searchParams.get("access_token"),
-    error: hashParams.get("error_description") ?? hashParams.get("error") ?? searchParams.get("error_description"),
-    mode: searchParams.get("mode"),
-    role: searchParams.get("role")
+    accessToken: hashParams.get("access_token"),
+    error: hashParams.get("error_description") ?? hashParams.get("error")
   };
 }
 
-function routeAfterAuth(profile: Profile, mode: string | null) {
-  if (mode === "register" && profile.role === "professional") return "/professional/categories";
+function routeAfterAuth(profile: Profile) {
   return "/dashboard";
 }
 
@@ -33,7 +29,6 @@ export default function AuthCallbackPage() {
   const session = useSession();
   const showToast = useToast();
   const [token, setToken] = useState<string | null>(null);
-  const [mode, setMode] = useState<string | null>(null);
   const [role, setRole] = useState<RegisterRole>("client");
   const [email, setEmail] = useState("");
   const [firstName, setFirstName] = useState("");
@@ -42,11 +37,11 @@ export default function AuthCallbackPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
-  function handleOAuthResponse(accessToken: string, data: OAuthProfileResponse, nextMode: string | null) {
+  function handleOAuthResponse(accessToken: string, data: OAuthProfileResponse) {
     if (data.profile) {
       session.setSession(accessToken, data.profile.role, data.profile);
       showToast({ tone: "success", title: "Google sign-in successful", body: "Your workspace is ready." });
-      router.replace(routeAfterAuth(data.profile, nextMode));
+      router.replace(routeAfterAuth(data.profile));
       return;
     }
 
@@ -63,8 +58,6 @@ export default function AuthCallbackPage() {
   useEffect(() => {
     async function finishOAuth() {
       const params = readOAuthParams();
-      setMode(params.mode);
-      if (params.role === "client" || params.role === "professional") setRole(params.role);
 
       if (params.error) {
         showToast({ tone: "error", title: "Google sign-in failed", body: params.error });
@@ -81,9 +74,8 @@ export default function AuthCallbackPage() {
       setToken(params.accessToken);
 
       try {
-        const payload = params.role === "client" || params.role === "professional" ? { role: params.role as RegisterRole } : {};
-        const data = await completeOAuthProfile(params.accessToken, payload);
-        handleOAuthResponse(params.accessToken, data, params.mode);
+        const data = await completeOAuthProfile(params.accessToken);
+        handleOAuthResponse(params.accessToken, data);
       } catch (err) {
         const message = err instanceof Error ? err.message : "Could not finish Google sign-in";
         showToast({ tone: "error", title: "Google sign-in failed", body: message });
@@ -109,7 +101,7 @@ export default function AuthCallbackPage() {
         first_name: firstName,
         last_name: lastName
       });
-      handleOAuthResponse(token, data, mode);
+      handleOAuthResponse(token, data);
     } catch (err) {
       const message = err instanceof Error ? err.message : "Could not complete profile";
       showToast({ tone: "error", title: "Profile setup failed", body: message });

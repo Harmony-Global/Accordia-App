@@ -48,7 +48,7 @@ export default function RegisterPage() {
     setGoogleLoading(true);
 
     try {
-      const redirectTo = `${window.location.origin}/auth/callback?mode=register&role=${role}`;
+      const redirectTo = `${window.location.origin}/auth/callback`;
       const data = await startGoogleOAuth(redirectTo);
       window.location.assign(data.url);
     } catch (err) {

@@ -37,7 +37,7 @@ export default function LoginPage() {
     setGoogleLoading(true);
 
     try {
-      const redirectTo = `${window.location.origin}/auth/callback?mode=login`;
+      const redirectTo = `${window.location.origin}/auth/callback`;
       const data = await startGoogleOAuth(redirectTo);
       window.location.assign(data.url);
     } catch (err) {
