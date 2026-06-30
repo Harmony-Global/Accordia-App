@@ -233,7 +233,7 @@ function ApplicationRow({
             <Button onClick={() => onViewProfile(application)} type="button" variant="secondary">
               <span className="inline-flex items-center gap-2"><UserRound size={16} /> View profile</span>
             </Button>
-            {application.status === "awarded" && conversation ? (
+            {conversation ? (
               <Button onClick={() => onOpenChat(conversation)} type="button">
                 <span className="inline-flex items-center gap-2"><MessageCircle size={16} /> Chat</span>
               </Button>

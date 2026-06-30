@@ -214,6 +214,7 @@ export default function ProfessionalJobsPage() {
             {applications.map((application) => {
               const draft = editing[application.id];
               const references = draft?.reference_image_urls ?? application.reference_image_urls ?? [];
+              const conversation = conversations.find((item) => item.application_id === application.id);
 
               return (
                 <article className="rounded-lg border border-line bg-white p-4 shadow-sm sm:p-5" key={application.id}>
@@ -253,14 +254,10 @@ export default function ProfessionalJobsPage() {
                       <ReferenceImages images={references} />
                     </>
                   )}
-                  {application.status === "awarded" ? (
+                  {conversation ? (
                     <Button
                       className="mt-4 w-full"
-                      disabled={!conversations.some((conversation) => conversation.application_id === application.id || conversation.job_id === application.job_id)}
-                      onClick={() => {
-                        const conversation = conversations.find((item) => item.application_id === application.id || item.job_id === application.job_id);
-                        if (conversation) setChatConversation(conversation);
-                      }}
+                      onClick={() => setChatConversation(conversation)}
                       type="button"
                     >
                       <span className="inline-flex items-center gap-2"><MessageCircle size={18} /> Chat with client</span>
