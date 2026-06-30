@@ -1,12 +1,14 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { ImagePlus, PencilLine, Save, Send, X } from "lucide-react";
+import { ImagePlus, MessageCircle, PencilLine, Save, Send, X } from "lucide-react";
 import { AppShell, EmptyState } from "@/components/app-shell";
+import { ChatModal } from "@/components/chat-modal";
 import { ApplicationStatusPill, Button, IconButton, PageLoader, Spinner, StatusPill, TextAreaField, TextField } from "@/components/ui";
 import { useToast } from "@/components/toast";
+import { useConversations } from "@/hooks/use-conversations";
 import { useMatchedJobs, useMyApplications } from "@/hooks/use-jobs";
-import type { Application } from "@/types";
+import type { Application, JobConversation } from "@/types";
 
 function readImages(files: FileList | null): Promise<string[]> {
   const images = Array.from(files ?? []).filter((file) => file.type.startsWith("image/")).slice(0, 3);
@@ -55,12 +57,14 @@ function FileActionButton({
 export default function ProfessionalJobsPage() {
   const { jobs, error: loadError, loading, apply: submitApplication, refresh: refreshMatchedJobs } = useMatchedJobs();
   const { applications, error: applicationError, loading: applicationsLoading, saveApplication, refresh: refreshApplications } = useMyApplications();
+  const { conversations, error: conversationError } = useConversations();
   const showToast = useToast();
   const [pitchByJob, setPitchByJob] = useState<Record<string, string>>({});
   const [referencesByJob, setReferencesByJob] = useState<Record<string, string[]>>({});
   const [editing, setEditing] = useState<Record<string, { pitch: string; proposed_rate: string; reference_image_urls: string[] }>>({});
   const [applyingJobId, setApplyingJobId] = useState("");
   const [savingApplicationId, setSavingApplicationId] = useState("");
+  const [chatConversation, setChatConversation] = useState<JobConversation | null>(null);
   const appliedJobIds = new Set(applications.map((application) => application.job_id));
   const availableJobs = jobs.filter((job) => !appliedJobIds.has(job.id));
 
@@ -75,6 +79,12 @@ export default function ProfessionalJobsPage() {
       showToast({ tone: "error", title: "Could not load applications", body: applicationError });
     }
   }, [applicationError, showToast]);
+
+  useEffect(() => {
+    if (conversationError) {
+      showToast({ tone: "error", title: "Could not load chats", body: conversationError });
+    }
+  }, [conversationError, showToast]);
 
   async function apply(jobId: string) {
     if ((referencesByJob[jobId] ?? []).length === 0) {
@@ -243,6 +253,19 @@ export default function ProfessionalJobsPage() {
                       <ReferenceImages images={references} />
                     </>
                   )}
+                  {application.status === "awarded" ? (
+                    <Button
+                      className="mt-4 w-full"
+                      disabled={!conversations.some((conversation) => conversation.application_id === application.id || conversation.job_id === application.job_id)}
+                      onClick={() => {
+                        const conversation = conversations.find((item) => item.application_id === application.id || item.job_id === application.job_id);
+                        if (conversation) setChatConversation(conversation);
+                      }}
+                      type="button"
+                    >
+                      <span className="inline-flex items-center gap-2"><MessageCircle size={18} /> Chat with client</span>
+                    </Button>
+                  ) : null}
                 </article>
               );
             })}
@@ -289,6 +312,7 @@ export default function ProfessionalJobsPage() {
           </div>
         </section>
       </div>
+      {chatConversation ? <ChatModal conversation={chatConversation} onClose={() => setChatConversation(null)} /> : null}
     </AppShell>
   );
 }

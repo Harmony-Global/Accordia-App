@@ -2,12 +2,13 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { Award, CheckCircle2, CircleX, Clock3, Eye, FileText, RotateCcw, UserRound, X, type LucideIcon } from "lucide-react";
+import { Award, BriefcaseBusiness, CheckCircle2, CircleX, Clock3, Eye, FileText, MessageCircle, RotateCcw, ShieldCheck, UserRound, X, type LucideIcon } from "lucide-react";
 import { AppShell, EmptyState } from "@/components/app-shell";
+import { ChatModal } from "@/components/chat-modal";
 import { ApplicationStatusPill, Button, IconButton, PageLoader, Spinner, StatusPill } from "@/components/ui";
 import { useToast } from "@/components/toast";
 import { useClientJobs, useJobEngagement } from "@/hooks/use-jobs";
-import type { Application, JobView, ProfessionalProfile, ProfessionalService } from "@/types";
+import type { Application, JobConversation, JobView, ProfessionalProfile, ProfessionalService } from "@/types";
 
 function PersonAvatar({ avatarUrl }: { avatarUrl?: string | null }) {
   return (
@@ -31,9 +32,101 @@ function References({ application }: { application: Application }) {
 }
 
 function getApplicantServices(application: Application): ProfessionalService[] {
-  const profiles = application.professional?.professional_profiles;
-  const professionalProfile: ProfessionalProfile | null = Array.isArray(profiles) ? profiles[0] ?? null : profiles ?? null;
+  const professionalProfile = getApplicantProfile(application);
   return professionalProfile?.professional_services?.filter((service) => service.is_active) ?? [];
+}
+
+function getApplicantProfile(application: Application): ProfessionalProfile | null {
+  const profiles = application.professional?.professional_profiles;
+  return Array.isArray(profiles) ? profiles[0] ?? null : profiles ?? null;
+}
+
+function ProfessionalProfileModal({ application, onClose }: { application: Application; onClose: () => void }) {
+  const professionalProfile = getApplicantProfile(application);
+  const services = getApplicantServices(application);
+  const categories = professionalProfile?.professional_categories?.map((item) => item.category).filter(Boolean) ?? [];
+
+  return (
+    <div className="fixed inset-0 z-[75] flex items-end justify-center bg-black/50 p-0 sm:items-center sm:p-4">
+      <section className="max-h-[92vh] w-full overflow-y-auto rounded-t-lg border border-line bg-white p-4 shadow-xl sm:max-w-3xl sm:rounded-lg sm:p-5">
+        <div className="flex items-start justify-between gap-4">
+          <div className="flex min-w-0 items-center gap-3">
+            <PersonAvatar avatarUrl={application.professional?.avatar_url} />
+            <div className="min-w-0">
+              <p className="text-sm font-medium text-brand">Professional profile</p>
+              <h2 className="truncate text-xl font-semibold text-ink">
+                {application.professional?.first_name} {application.professional?.last_name}
+              </h2>
+            </div>
+          </div>
+          <IconButton aria-label="Close professional profile" onClick={onClose} type="button" variant="ghost">
+            <X size={18} />
+          </IconButton>
+        </div>
+
+        <div className="mt-5 grid gap-4 sm:grid-cols-3">
+          <div className="rounded-md border border-line bg-slate-50 p-3">
+            <ShieldCheck className="text-brand" size={18} />
+            <p className="mt-2 text-sm font-semibold text-ink">Verification</p>
+            <p className="mt-1 text-sm text-muted">{application.professional?.phone_verified ? "Phone verified" : "Phone not verified"}</p>
+          </div>
+          <div className="rounded-md border border-line bg-slate-50 p-3">
+            <Clock3 className="text-brand" size={18} />
+            <p className="mt-2 text-sm font-semibold text-ink">Experience</p>
+            <p className="mt-1 text-sm text-muted">{professionalProfile?.years_experience ?? 0} year{professionalProfile?.years_experience === 1 ? "" : "s"}</p>
+          </div>
+          <div className="rounded-md border border-line bg-slate-50 p-3">
+            <BriefcaseBusiness className="text-brand" size={18} />
+            <p className="mt-2 text-sm font-semibold text-ink">Availability</p>
+            <p className="mt-1 text-sm text-muted">{professionalProfile?.is_available ? "Available" : "Not marked available"}</p>
+          </div>
+        </div>
+
+        {professionalProfile?.bio ? (
+          <div className="mt-5">
+            <h3 className="font-semibold text-ink">Bio</h3>
+            <p className="mt-2 text-sm leading-6 text-muted">{professionalProfile.bio}</p>
+          </div>
+        ) : null}
+
+        <div className="mt-5 grid gap-5 sm:grid-cols-2">
+          <section>
+            <h3 className="font-semibold text-ink">Categories</h3>
+            <div className="mt-2 flex flex-wrap gap-2">
+              {categories.length > 0 ? categories.map((category) => <StatusPill key={category.id}>{category.name}</StatusPill>) : <p className="text-sm text-muted">No categories yet.</p>}
+            </div>
+          </section>
+          <section>
+            <h3 className="font-semibold text-ink">Location</h3>
+            <p className="mt-2 text-sm text-muted">{[professionalProfile?.location, professionalProfile?.state].filter(Boolean).join(", ") || "Not provided"}</p>
+          </section>
+        </div>
+
+        <section className="mt-5">
+          <h3 className="font-semibold text-ink">Application references</h3>
+          <References application={application} />
+          {(application.reference_image_urls ?? []).length === 0 ? <p className="mt-2 text-sm text-muted">No references attached.</p> : null}
+        </section>
+
+        <section className="mt-5">
+          <h3 className="font-semibold text-ink">Services and products</h3>
+          {services.length === 0 ? <p className="mt-2 text-sm text-muted">No active offerings yet.</p> : null}
+          <div className="mt-3 grid gap-3 sm:grid-cols-2">
+            {services.map((service) => (
+              <article className="rounded-md border border-line bg-white p-3" key={service.id}>
+                <img alt={service.title} className="h-36 w-full rounded-md object-cover" src={service.image_url} />
+                <h4 className="mt-3 font-semibold text-ink">{service.title}</h4>
+                <p className="mt-1 line-clamp-3 text-sm leading-6 text-muted">{service.description}</p>
+                <p className="mt-2 text-sm font-semibold text-brand">
+                  {service.currency} {service.price_min.toLocaleString()} - {service.price_max.toLocaleString()}
+                </p>
+              </article>
+            ))}
+          </div>
+        </section>
+      </section>
+    </div>
+  );
 }
 
 function jobProgress(jobStatus: string) {
@@ -80,16 +173,22 @@ function MetricAction({
 
 function ApplicationRow({
   application,
+  conversation,
   awarding,
   undoing,
   onAward,
-  onUndo
+  onUndo,
+  onOpenChat,
+  onViewProfile
 }: {
   application: Application;
+  conversation?: JobConversation;
   awarding: boolean;
   undoing: boolean;
   onAward: (application: Application) => void;
   onUndo: (application: Application) => void;
+  onOpenChat: (conversation: JobConversation) => void;
+  onViewProfile: (application: Application) => void;
 }) {
   const services = getApplicantServices(application);
   const canAward = ["pending", "reviewed", "shortlisted"].includes(application.status);
@@ -130,6 +229,16 @@ function ApplicationRow({
               </div>
             </div>
           ) : null}
+          <div className="mt-4 grid gap-2 sm:grid-cols-2">
+            <Button onClick={() => onViewProfile(application)} type="button" variant="secondary">
+              <span className="inline-flex items-center gap-2"><UserRound size={16} /> View profile</span>
+            </Button>
+            {application.status === "awarded" && conversation ? (
+              <Button onClick={() => onOpenChat(conversation)} type="button">
+                <span className="inline-flex items-center gap-2"><MessageCircle size={16} /> Chat</span>
+              </Button>
+            ) : null}
+          </div>
           {canAward || canUndo ? (
             <Button
               className="mt-4 w-full sm:w-auto"
@@ -165,12 +274,14 @@ function ViewRow({ view }: { view: JobView }) {
 }
 
 function JobEngagementPanel({ jobId, onAwarded, onClose }: { jobId: string | null; onAwarded: () => void; onClose: () => void }) {
-  const { applications, views, error, loading, award, undoAward, sealAwards, refresh } = useJobEngagement(jobId);
+  const { applications, conversations, views, error, loading, award, undoAward, sealAwards, refresh } = useJobEngagement(jobId);
   const showToast = useToast();
   const [awardingApplicationId, setAwardingApplicationId] = useState("");
   const [undoingApplicationId, setUndoingApplicationId] = useState("");
   const [sealing, setSealing] = useState(false);
   const [sealPromptOpen, setSealPromptOpen] = useState(false);
+  const [profileApplication, setProfileApplication] = useState<Application | null>(null);
+  const [chatConversation, setChatConversation] = useState<JobConversation | null>(null);
   const selectedApplications = applications.filter((application) => application.status === "selected");
 
   useEffect(() => {
@@ -317,6 +428,8 @@ function JobEngagementPanel({ jobId, onAwarded, onClose }: { jobId: string | nul
           </div>
         </div>
       ) : null}
+      {profileApplication ? <ProfessionalProfileModal application={profileApplication} onClose={() => setProfileApplication(null)} /> : null}
+      {chatConversation ? <ChatModal conversation={chatConversation} onClose={() => setChatConversation(null)} /> : null}
       {loading ? <p className="mt-4 inline-flex items-center gap-2 text-sm text-muted"><Spinner /> Loading activity</p> : null}
       {!loading ? (
         <div className="mt-4 grid gap-5">
@@ -330,11 +443,14 @@ function JobEngagementPanel({ jobId, onAwarded, onClose }: { jobId: string | nul
               {applications.map((application) => (
                 <ApplicationRow
                   application={application}
+                  conversation={conversations.find((conversation) => conversation.application_id === application.id || conversation.professional_id === application.professional_id)}
                   awarding={awardingApplicationId === application.id}
                   undoing={undoingApplicationId === application.id}
                   key={application.id}
                   onAward={awardJob}
+                  onOpenChat={setChatConversation}
                   onUndo={undoAwardSelection}
+                  onViewProfile={setProfileApplication}
                 />
               ))}
             </div>

@@ -115,3 +115,35 @@ export type Notification = {
   sent_at: string | null;
   created_at: string;
 };
+
+export type JobConversation = {
+  id: string;
+  job_id: string;
+  application_id: string;
+  client_id: string;
+  professional_id: string;
+  opened_by: string | null;
+  status: "open" | "archived" | string;
+  created_at: string;
+  updated_at: string;
+  job?: Pick<Job, "id" | "title" | "status" | "category"> | null;
+  application?: Pick<Application, "id" | "status" | "pitch" | "reference_image_urls"> | null;
+  client?: Pick<Profile, "id" | "first_name" | "last_name" | "avatar_url" | "phone_verified"> | null;
+  professional?: Pick<Profile, "id" | "first_name" | "last_name" | "avatar_url" | "phone_verified"> & {
+    professional_profiles?: ProfessionalProfile | ProfessionalProfile[] | null;
+  };
+};
+
+export type ChatMessage = {
+  id: string;
+  conversation_id: string | null;
+  sender_id: string;
+  receiver_id: string;
+  job_id: string | null;
+  application_id: string | null;
+  body: string;
+  is_read: boolean;
+  created_at: string;
+  sender?: Pick<Profile, "id" | "first_name" | "last_name" | "avatar_url"> | null;
+  receiver?: Pick<Profile, "id" | "first_name" | "last_name" | "avatar_url"> | null;
+};

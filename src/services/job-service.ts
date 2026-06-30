@@ -89,7 +89,7 @@ export function undoAwardApplication(token: string, applicationId: string) {
 }
 
 export function sealJobAwards(token: string, jobId: string) {
-  return apiFetch<{ job_id: string; awarded_application_ids: string[] }>(`/api/jobs/${jobId}/awards/seal`, {
+  return apiFetch<{ job_id: string; awarded_application_ids: string[]; conversation_ids: string[] }>(`/api/jobs/${jobId}/awards/seal`, {
     token,
     method: "POST",
     body: {}
