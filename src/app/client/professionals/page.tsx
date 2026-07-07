@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { BriefcaseBusiness, CalendarDays, MessageCircle, MapPin, Search, ShieldCheck, UserRound, X } from "lucide-react";
 import { AppShell, EmptyState } from "@/components/app-shell";
@@ -339,7 +339,7 @@ function ProfessionalCard({
   );
 }
 
-export default function ClientProfessionalsPage() {
+function ClientProfessionalsContent() {
   const token = useRequireAuth();
   const searchParams = useSearchParams();
   const showToast = useToast();
@@ -444,5 +444,12 @@ export default function ClientProfessionalsPage() {
       {selectedProfessional ? <ProfessionalDetailModal professional={selectedProfessional} onClose={() => setSelectedProfessional(null)} /> : null}
       {activeInquiry ? <ChatModal conversation={activeInquiry} kind="inquiry" onClose={() => setActiveInquiry(null)} /> : null}
     </AppShell>
+  );
+}
+export default function ClientProfessionalsPage() {
+  return (
+    <Suspense fallback={<AppShell><PageLoader /></AppShell>}>
+      <ClientProfessionalsContent />
+    </Suspense>
   );
 }

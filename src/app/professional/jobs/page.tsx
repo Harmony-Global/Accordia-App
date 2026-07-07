@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { ImagePlus, MessageCircle, PencilLine, Save, Send, X } from "lucide-react";
 import { AppShell, EmptyState } from "@/components/app-shell";
@@ -57,7 +57,7 @@ function FileActionButton({
   );
 }
 
-export default function ProfessionalJobsPage() {
+function ProfessionalJobsContent() {
   const searchParams = useSearchParams();
   const token = useRequireAuth();
   const { jobs, error: loadError, loading, apply: submitApplication, refresh: refreshMatchedJobs } = useMatchedJobs();
@@ -348,5 +348,12 @@ export default function ProfessionalJobsPage() {
       {chatConversation ? <ChatModal conversation={chatConversation} onClose={() => setChatConversation(null)} /> : null}
       {inquiryConversation ? <ChatModal conversation={inquiryConversation} kind="inquiry" onClose={() => setInquiryConversation(null)} /> : null}
     </AppShell>
+  );
+}
+export default function ProfessionalJobsPage() {
+  return (
+    <Suspense fallback={<AppShell><PageLoader /></AppShell>}>
+      <ProfessionalJobsContent />
+    </Suspense>
   );
 }

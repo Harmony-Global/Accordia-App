@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { Award, BriefcaseBusiness, CheckCircle2, CircleX, Clock3, Eye, FileText, MessageCircle, RotateCcw, ShieldCheck, UserRound, X, type LucideIcon } from "lucide-react";
 import { AppShell, EmptyState } from "@/components/app-shell";
 import { ChatModal } from "@/components/chat-modal";
@@ -515,7 +515,7 @@ function JobEngagementPanel({
   );
 }
 
-export default function ClientJobsPage() {
+function ClientJobsContent() {
   const { jobs, error, loading, refresh } = useClientJobs();
   const searchParams = useSearchParams();
   const showToast = useToast();
@@ -589,5 +589,12 @@ export default function ClientJobsPage() {
         </div>
       </div>
     </AppShell>
+  );
+}
+export default function ClientJobsPage() {
+  return (
+    <Suspense fallback={<AppShell><PageLoader /></AppShell>}>
+      <ClientJobsContent />
+    </Suspense>
   );
 }
