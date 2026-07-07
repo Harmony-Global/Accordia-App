@@ -9,6 +9,7 @@ import { useSession } from "@/components/session-provider";
 import { useToast } from "@/components/toast";
 import { Button, Spinner, TextField } from "@/components/ui";
 import { useRegisterAction } from "@/hooks/use-auth";
+import { isStrongPassword, PASSWORD_RULE_MESSAGE } from "@/lib/password";
 import { startGoogleOAuth } from "@/services/auth-service";
 import type { Role } from "@/types";
 
@@ -51,6 +52,12 @@ export default function RegisterPage() {
       first_name: String(form.get("first_name")),
       last_name: String(form.get("last_name"))
     };
+
+    if (!isStrongPassword(payload.password)) {
+      showToast({ tone: "error", title: "Check your password", body: PASSWORD_RULE_MESSAGE });
+      setLoading(false);
+      return;
+    }
 
     try {
       await register(payload);
@@ -127,6 +134,7 @@ export default function RegisterPage() {
             <div className="mt-2 flex rounded-md border border-line bg-white transition duration-200 hover:border-slate-300 focus-within:border-brand focus-within:ring-4 focus-within:ring-teal-100">
               <input
                 className="min-w-0 flex-1 rounded-md bg-transparent px-3 py-3 text-sm outline-none"
+                minLength={8}
                 name="password"
                 required
                 type={showPassword ? "text" : "password"}
@@ -140,6 +148,9 @@ export default function RegisterPage() {
                 {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
               </button>
             </div>
+            <span className="mt-2 block text-xs font-medium text-muted">
+              {PASSWORD_RULE_MESSAGE}
+            </span>
           </label>
         </div>
         <Button className="mt-6 w-full" disabled={loading} type="submit">

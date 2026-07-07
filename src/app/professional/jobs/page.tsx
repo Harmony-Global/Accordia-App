@@ -1,14 +1,17 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { ImagePlus, MessageCircle, PencilLine, Save, Send, X } from "lucide-react";
 import { AppShell, EmptyState } from "@/components/app-shell";
 import { ChatModal } from "@/components/chat-modal";
 import { ApplicationStatusPill, Button, IconButton, PageLoader, Spinner, StatusPill, TextAreaField, TextField } from "@/components/ui";
 import { useToast } from "@/components/toast";
 import { useConversations } from "@/hooks/use-conversations";
+import { useRequireAuth } from "@/hooks/use-auth";
 import { useMatchedJobs, useMyApplications } from "@/hooks/use-jobs";
-import type { Application, JobConversation } from "@/types";
+import { getProfessionalInquiries } from "@/services/inquiry-service";
+import type { Application, JobConversation, ProfessionalInquiry } from "@/types";
 
 function readImages(files: FileList | null): Promise<string[]> {
   const images = Array.from(files ?? []).filter((file) => file.type.startsWith("image/")).slice(0, 3);
@@ -55,6 +58,8 @@ function FileActionButton({
 }
 
 export default function ProfessionalJobsPage() {
+  const searchParams = useSearchParams();
+  const token = useRequireAuth();
   const { jobs, error: loadError, loading, apply: submitApplication, refresh: refreshMatchedJobs } = useMatchedJobs();
   const { applications, error: applicationError, loading: applicationsLoading, saveApplication, refresh: refreshApplications } = useMyApplications();
   const { conversations, error: conversationError } = useConversations();
@@ -65,6 +70,11 @@ export default function ProfessionalJobsPage() {
   const [applyingJobId, setApplyingJobId] = useState("");
   const [savingApplicationId, setSavingApplicationId] = useState("");
   const [chatConversation, setChatConversation] = useState<JobConversation | null>(null);
+  const [inquiryConversation, setInquiryConversation] = useState<ProfessionalInquiry | null>(null);
+  const [openedConversationId, setOpenedConversationId] = useState("");
+  const [openedInquiryId, setOpenedInquiryId] = useState("");
+  const conversationIdParam = searchParams.get("conversation_id");
+  const inquiryIdParam = searchParams.get("inquiry_id");
   const appliedJobIds = new Set(applications.map((application) => application.job_id));
   const availableJobs = jobs.filter((job) => !appliedJobIds.has(job.id));
 
@@ -85,6 +95,32 @@ export default function ProfessionalJobsPage() {
       showToast({ tone: "error", title: "Could not load chats", body: conversationError });
     }
   }, [conversationError, showToast]);
+
+  useEffect(() => {
+    if (!conversationIdParam || openedConversationId === conversationIdParam) return;
+    const conversation = conversations.find((item) => item.id === conversationIdParam);
+    if (!conversation) return;
+
+    setChatConversation(conversation);
+    setOpenedConversationId(conversationIdParam);
+  }, [conversationIdParam, conversations, openedConversationId]);
+
+  useEffect(() => {
+    if (!token || !inquiryIdParam || openedInquiryId === inquiryIdParam) return;
+
+    getProfessionalInquiries(token)
+      .then((data) => {
+        const inquiry = data.inquiries.find((item) => item.id === inquiryIdParam);
+        if (inquiry) {
+          setInquiryConversation(inquiry);
+          setOpenedInquiryId(inquiryIdParam);
+        }
+      })
+      .catch((err) => {
+        const message = err instanceof Error ? err.message : "Could not open inquiry";
+        showToast({ tone: "error", title: "Inquiry unavailable", body: message });
+      });
+  }, [inquiryIdParam, openedInquiryId, showToast, token]);
 
   async function apply(jobId: string) {
     if ((referencesByJob[jobId] ?? []).length === 0) {
@@ -310,6 +346,7 @@ export default function ProfessionalJobsPage() {
         </section>
       </div>
       {chatConversation ? <ChatModal conversation={chatConversation} onClose={() => setChatConversation(null)} /> : null}
+      {inquiryConversation ? <ChatModal conversation={inquiryConversation} kind="inquiry" onClose={() => setInquiryConversation(null)} /> : null}
     </AppShell>
   );
 }

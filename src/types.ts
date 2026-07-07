@@ -137,6 +137,7 @@ export type JobConversation = {
 export type ChatMessage = {
   id: string;
   conversation_id: string | null;
+  inquiry_id?: string | null;
   sender_id: string;
   receiver_id: string;
   job_id: string | null;
@@ -147,3 +148,56 @@ export type ChatMessage = {
   sender?: Pick<Profile, "id" | "first_name" | "last_name" | "avatar_url"> | null;
   receiver?: Pick<Profile, "id" | "first_name" | "last_name" | "avatar_url"> | null;
 };
+
+export type ProfessionalSearchResult = ProfessionalProfile & {
+  profile?: Pick<Profile, "id" | "first_name" | "last_name" | "avatar_url" | "phone_verified"> | null;
+};
+
+export type ProfessionalInquiry = {
+  id: string;
+  client_id: string;
+  professional_id: string;
+  service_id: string | null;
+  status: "open" | "archived" | string;
+  created_at: string;
+  updated_at: string;
+  client?: Pick<Profile, "id" | "first_name" | "last_name" | "avatar_url" | "phone_verified"> | null;
+  professional?: Pick<Profile, "id" | "first_name" | "last_name" | "avatar_url" | "phone_verified"> & {
+    professional_profiles?: ProfessionalProfile | ProfessionalProfile[] | null;
+  };
+  service?: ProfessionalService | null;
+};
+export type AppointmentAvailability = {
+  id: string;
+  professional_id: string;
+  service_id: string | null;
+  starts_at: string;
+  ends_at: string;
+  status: "open" | "booked" | "blocked" | string;
+  note: string | null;
+  created_at: string;
+  updated_at: string;
+  service?: ProfessionalService | null;
+};
+
+export type Appointment = {
+  id: string;
+  client_id: string;
+  professional_id: string;
+  service_id: string | null;
+  availability_id: string | null;
+  inquiry_id: string | null;
+  starts_at: string;
+  ends_at: string;
+  status: "requested" | "accepted" | "declined" | "cancelled" | "completed" | string;
+  note: string | null;
+  created_at: string;
+  updated_at: string;
+  client?: Pick<Profile, "id" | "first_name" | "last_name" | "avatar_url" | "phone_verified"> | null;
+  professional?: Pick<Profile, "id" | "first_name" | "last_name" | "avatar_url" | "phone_verified"> & {
+    professional_profiles?: ProfessionalProfile | ProfessionalProfile[] | null;
+  };
+  service?: ProfessionalService | null;
+  availability?: AppointmentAvailability | null;
+};
+

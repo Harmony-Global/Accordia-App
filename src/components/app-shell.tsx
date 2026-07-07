@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { Bell, CheckCheck, LogOut, Menu, UserRound, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { BrandLockup } from "@/components/brand";
@@ -21,6 +21,7 @@ function navClass(isActive: boolean, variant: "default" | "primary" = "default")
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  const router = useRouter();
   const { token, role, profile, logout } = useAuth();
   const [notifications, setNotifications] = useState<Notification[]>(cachedUnreadNotifications);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
@@ -62,6 +63,56 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     await Promise.allSettled(unreadIds.map((id) => markNotificationRead(token, id, true)));
   }
 
+  function notificationHref(notification: Notification) {
+    const jobId = typeof notification.data?.job_id === "string" ? notification.data.job_id : "";
+    const conversationId = typeof notification.data?.conversation_id === "string" ? notification.data.conversation_id : "";
+    const inquiryId = typeof notification.data?.inquiry_id === "string" ? notification.data.inquiry_id : "";
+    const appointmentId = typeof notification.data?.appointment_id === "string" ? notification.data.appointment_id : "";
+    const params = new URLSearchParams();
+
+    if (jobId) params.set("job_id", jobId);
+    if (conversationId) params.set("conversation_id", conversationId);
+    if (inquiryId) params.set("inquiry_id", inquiryId);
+    if (appointmentId) params.set("appointment_id", appointmentId);
+
+    if (appointmentId && role === "client") {
+      return `/client/appointments?${params.toString()}`;
+    }
+
+    if (appointmentId && role === "professional") {
+      return `/professional/appointments?${params.toString()}`;
+    }
+
+    if (inquiryId && role === "client") {
+      return `/client/professionals?${params.toString()}`;
+    }
+
+    if (inquiryId && role === "professional") {
+      return `/professional/jobs?${params.toString()}`;
+    }
+
+    if (role === "client" && jobId) {
+      return `/client/jobs?${params.toString()}`;
+    }
+
+    if (role === "professional") {
+      return conversationId ? `/professional/jobs?${params.toString()}` : "/professional/jobs";
+    }
+
+    return "/dashboard";
+  }
+
+  async function openNotification(notification: Notification) {
+    if (token && !notification.is_read) {
+      markNotificationRead(token, notification.id, true).catch(() => undefined);
+      cachedUnreadNotifications = cachedUnreadNotifications.filter((item) => item.id !== notification.id);
+      setNotifications((current) => current.filter((item) => item.id !== notification.id));
+    }
+
+    setNotificationsOpen(false);
+    router.push(notificationHref(notification));
+  }
+
   useEffect(() => {
     setMobileMenuOpen(false);
   }, [pathname]);
@@ -73,6 +124,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           <Link className={navClass(pathname.startsWith("/professional/jobs"))} href="/professional/jobs">
             Jobs
           </Link>
+          <Link className={navClass(pathname.startsWith("/professional/appointments"))} href="/professional/appointments">
+            Appointments
+          </Link>
           <Link className={navClass(pathname.startsWith("/professional/categories"))} href="/professional/categories">
             Categories
           </Link>
@@ -82,6 +136,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <>
           <Link className={navClass(pathname === "/client/jobs")} href="/client/jobs">
             My Jobs
+          </Link>
+          <Link className={navClass(pathname.startsWith("/client/professionals"))} href="/client/professionals">
+            Find Pros
+          </Link>
+          <Link className={navClass(pathname.startsWith("/client/appointments"))} href="/client/appointments">
+            Appointments
           </Link>
           <Link className={navClass(pathname.startsWith("/client/jobs/new"), "primary")} href="/client/jobs/new">
             Post Job
@@ -178,11 +238,16 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             {notifications.length === 0 ? (
               <p className="p-4 text-sm text-muted">No unread notifications.</p>
             ) : notifications.map((notification) => (
-              <div className="border-b border-line p-3 last:border-b-0" key={notification.id}>
+              <button
+                className="block w-full border-b border-line p-3 text-left transition hover:bg-slate-50 last:border-b-0"
+                key={notification.id}
+                onClick={() => openNotification(notification)}
+                type="button"
+              >
                 <p className="text-sm font-semibold text-ink">{notification.title ?? "Notification"}</p>
                 {notification.body ? <p className="mt-1 text-sm leading-5 text-muted">{notification.body}</p> : null}
                 <p className="mt-2 text-xs text-muted">{new Date(notification.created_at).toLocaleDateString()}</p>
-              </div>
+              </button>
             ))}
           </div>
         </div>
@@ -201,3 +266,5 @@ export function EmptyState({ title, body }: { title: string; body: string }) {
     </div>
   );
 }
+
+

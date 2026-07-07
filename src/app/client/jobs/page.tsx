@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { Award, BriefcaseBusiness, CheckCircle2, CircleX, Clock3, Eye, FileText, MessageCircle, RotateCcw, ShieldCheck, UserRound, X, type LucideIcon } from "lucide-react";
 import { AppShell, EmptyState } from "@/components/app-shell";
@@ -190,6 +191,9 @@ function ApplicationRow({
   onOpenChat: (conversation: JobConversation) => void;
   onViewProfile: (application: Application) => void;
 }) {
+  const professionalProfile = getApplicantProfile(application);
+  const categories = professionalProfile?.professional_categories?.map((item) => item.category).filter(Boolean) ?? [];
+  const location = [professionalProfile?.location, professionalProfile?.state].filter(Boolean).join(", ");
   const services = getApplicantServices(application);
   const canAward = ["pending", "reviewed", "shortlisted"].includes(application.status);
   const canUndo = application.status === "selected";
@@ -209,6 +213,26 @@ function ApplicationRow({
             {application.professional?.phone_verified ? "Phone verified" : "Phone not verified"}
             {application.proposed_rate ? ` • Proposed: NGN ${application.proposed_rate.toLocaleString()}` : ""}
           </p>
+          <div className="mt-3 grid gap-2 text-sm text-muted sm:grid-cols-2">
+            <div className="rounded-md bg-slate-50 p-2">
+              <p className="text-xs font-bold uppercase text-muted">Location</p>
+              <p className="mt-1 font-medium text-ink">{location || "Not provided"}</p>
+            </div>
+            <div className="rounded-md bg-slate-50 p-2">
+              <p className="text-xs font-bold uppercase text-muted">Experience</p>
+              <p className="mt-1 font-medium text-ink">
+                {professionalProfile?.years_experience ?? 0} year{professionalProfile?.years_experience === 1 ? "" : "s"}
+              </p>
+            </div>
+          </div>
+          {categories.length > 0 ? (
+            <div className="mt-3 flex flex-wrap gap-2">
+              {categories.slice(0, 3).map((category) => (
+                <StatusPill key={category.id}>{category.name}</StatusPill>
+              ))}
+              {categories.length > 3 ? <StatusPill tone="gray">+{categories.length - 3} more</StatusPill> : null}
+            </div>
+          ) : null}
           <p className="mt-3 text-sm leading-6 text-muted">{application.pitch}</p>
           <References application={application} />
           {services.length > 0 ? (
@@ -273,7 +297,17 @@ function ViewRow({ view }: { view: JobView }) {
   );
 }
 
-function JobEngagementPanel({ jobId, onAwarded, onClose }: { jobId: string | null; onAwarded: () => void; onClose: () => void }) {
+function JobEngagementPanel({
+  jobId,
+  openConversationId,
+  onAwarded,
+  onClose
+}: {
+  jobId: string | null;
+  openConversationId?: string | null;
+  onAwarded: () => void;
+  onClose: () => void;
+}) {
   const { applications, conversations, views, error, loading, award, undoAward, sealAwards, refresh } = useJobEngagement(jobId);
   const showToast = useToast();
   const [awardingApplicationId, setAwardingApplicationId] = useState("");
@@ -282,6 +316,7 @@ function JobEngagementPanel({ jobId, onAwarded, onClose }: { jobId: string | nul
   const [sealPromptOpen, setSealPromptOpen] = useState(false);
   const [profileApplication, setProfileApplication] = useState<Application | null>(null);
   const [chatConversation, setChatConversation] = useState<JobConversation | null>(null);
+  const [openedConversationId, setOpenedConversationId] = useState("");
   const selectedApplications = applications.filter((application) => application.status === "selected");
 
   useEffect(() => {
@@ -289,6 +324,15 @@ function JobEngagementPanel({ jobId, onAwarded, onClose }: { jobId: string | nul
       showToast({ tone: "error", title: "Could not load job activity", body: error });
     }
   }, [error, showToast]);
+
+  useEffect(() => {
+    if (!openConversationId || openedConversationId === openConversationId) return;
+    const conversation = conversations.find((item) => item.id === openConversationId);
+    if (!conversation) return;
+
+    setChatConversation(conversation);
+    setOpenedConversationId(openConversationId);
+  }, [conversations, openConversationId, openedConversationId]);
 
   async function awardJob(application: Application) {
     setAwardingApplicationId(application.id);
@@ -473,14 +517,21 @@ function JobEngagementPanel({ jobId, onAwarded, onClose }: { jobId: string | nul
 
 export default function ClientJobsPage() {
   const { jobs, error, loading, refresh } = useClientJobs();
+  const searchParams = useSearchParams();
   const showToast = useToast();
   const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
+  const jobIdParam = searchParams.get("job_id");
+  const conversationIdParam = searchParams.get("conversation_id");
 
   useEffect(() => {
     if (error) {
       showToast({ tone: "error", title: "Could not load jobs", body: error });
     }
   }, [error, showToast]);
+
+  useEffect(() => {
+    if (jobIdParam) setSelectedJobId(jobIdParam);
+  }, [jobIdParam]);
 
   if (loading) {
     return (
@@ -533,7 +584,7 @@ export default function ClientJobsPage() {
         </div>
         <div className={`${selectedJobId ? "fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/40 p-4 pt-20 xl:static xl:z-auto xl:block xl:overflow-visible xl:bg-transparent xl:p-0" : "hidden xl:block"}`}>
           <div className="w-full max-w-2xl xl:max-w-none">
-            <JobEngagementPanel jobId={selectedJobId} onAwarded={refresh} onClose={() => setSelectedJobId(null)} />
+            <JobEngagementPanel jobId={selectedJobId} openConversationId={conversationIdParam} onAwarded={refresh} onClose={() => setSelectedJobId(null)} />
           </div>
         </div>
       </div>

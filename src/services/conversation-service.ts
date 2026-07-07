@@ -17,3 +17,11 @@ export function sendConversationMessage(token: string, conversationId: string, b
     body: { body }
   });
 }
+
+export function markConversationRead(token: string, conversationId: string) {
+  return apiFetch<{ updated: number }>(`/api/conversations/${conversationId}/read`, {
+    token,
+    method: "PATCH",
+    body: {}
+  });
+}

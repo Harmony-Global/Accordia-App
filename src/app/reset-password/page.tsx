@@ -7,6 +7,7 @@ import { useEffect, useState } from "react";
 import { BrandLockup } from "@/components/brand";
 import { useToast } from "@/components/toast";
 import { Button, Spinner } from "@/components/ui";
+import { isStrongPassword, PASSWORD_RULE_MESSAGE } from "@/lib/password";
 import { resetPassword } from "@/services/auth-service";
 
 function readAccessToken() {
@@ -41,6 +42,11 @@ export default function ResetPasswordPage() {
       return;
     }
 
+    if (!isStrongPassword(password)) {
+      showToast({ tone: "error", title: "Check your password", body: PASSWORD_RULE_MESSAGE });
+      return;
+    }
+
     setLoading(true);
 
     try {
@@ -64,7 +70,7 @@ export default function ResetPasswordPage() {
           <p className="font-editorial mt-8 text-xl text-brand">Choose a new password.</p>
           <h1 className="mt-2 text-3xl font-semibold text-ink">Reset password</h1>
           <p className="mt-2 text-sm font-light leading-6 text-muted">
-            Use a password with at least 8 characters.
+            {PASSWORD_RULE_MESSAGE}
           </p>
           {!token ? (
             <p className="mt-6 rounded-md bg-red-50 p-3 text-sm font-medium text-red-700">

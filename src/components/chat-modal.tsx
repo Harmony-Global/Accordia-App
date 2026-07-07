@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Send, UserRound, X } from "lucide-react";
 import { Button, IconButton, Spinner, TextAreaField } from "@/components/ui";
 import { useToast } from "@/components/toast";
 import { useAuth, useRequireAuth } from "@/hooks/use-auth";
-import { getConversationMessages, sendConversationMessage } from "@/services/conversation-service";
-import type { ChatMessage, JobConversation, Profile } from "@/types";
+import { getConversationMessages, markConversationRead, sendConversationMessage } from "@/services/conversation-service";
+import { getInquiryMessages, markInquiryRead, sendInquiryMessage } from "@/services/inquiry-service";
+import type { ChatMessage, JobConversation, ProfessionalInquiry, Profile } from "@/types";
 
 function Avatar({ profile }: { profile?: Pick<Profile, "first_name" | "last_name" | "avatar_url"> | null }) {
   return (
@@ -22,9 +23,11 @@ function participantName(profile?: Pick<Profile, "first_name" | "last_name"> | n
 
 export function ChatModal({
   conversation,
+  kind = "job",
   onClose
 }: {
-  conversation: JobConversation;
+  conversation: JobConversation | ProfessionalInquiry;
+  kind?: "job" | "inquiry";
   onClose: () => void;
 }) {
   const token = useRequireAuth();
@@ -39,28 +42,53 @@ export function ChatModal({
     if (!profile) return conversation.professional ?? conversation.client;
     return profile.id === conversation.client_id ? conversation.professional : conversation.client;
   }, [conversation, profile]);
+  const contextLabel = kind === "job"
+    ? (conversation as JobConversation).job?.title ?? "Awarded job chat"
+    : (conversation as ProfessionalInquiry).service?.title ?? "Professional inquiry";
+
+  const loadMessages = useCallback(async (showLoading = false) => {
+    if (!token) return;
+    if (showLoading) setLoading(true);
+
+    const data = kind === "job"
+      ? await getConversationMessages(token, conversation.id)
+      : await getInquiryMessages(token, conversation.id);
+    setMessages((current) => {
+      if (
+        current.length === data.messages.length
+        && current[current.length - 1]?.id === data.messages[data.messages.length - 1]?.id
+      ) {
+        return current;
+      }
+
+      return data.messages;
+    });
+    await (kind === "job" ? markConversationRead(token, conversation.id) : markInquiryRead(token, conversation.id)).catch(() => undefined);
+  }, [conversation.id, kind, token]);
 
   useEffect(() => {
     if (!token) return;
     let isMounted = true;
     setLoading(true);
 
-    getConversationMessages(token, conversation.id)
-      .then((data) => {
-        if (isMounted) setMessages(data.messages);
-      })
+    loadMessages()
       .catch((err) => {
         const message = err instanceof Error ? err.message : "Could not load chat";
-        showToast({ tone: "error", title: "Chat unavailable", body: message });
+        if (isMounted) showToast({ tone: "error", title: "Chat unavailable", body: message });
       })
       .finally(() => {
         if (isMounted) setLoading(false);
       });
 
+    const refreshTimer = window.setInterval(() => {
+      loadMessages().catch(() => undefined);
+    }, 5000);
+
     return () => {
       isMounted = false;
+      window.clearInterval(refreshTimer);
     };
-  }, [conversation.id, showToast, token]);
+  }, [loadMessages, showToast, token]);
 
   async function sendMessage() {
     const body = draft.trim();
@@ -68,8 +96,11 @@ export function ChatModal({
 
     setSending(true);
     try {
-      const data = await sendConversationMessage(token, conversation.id, body);
+      const data = kind === "job"
+        ? await sendConversationMessage(token, conversation.id, body)
+        : await sendInquiryMessage(token, conversation.id, body);
       setMessages((current) => [...current, data.message]);
+      await (kind === "job" ? markConversationRead(token, conversation.id) : markInquiryRead(token, conversation.id)).catch(() => undefined);
       setDraft("");
     } catch (err) {
       const message = err instanceof Error ? err.message : "Could not send message";
@@ -87,7 +118,7 @@ export function ChatModal({
             <Avatar profile={otherParticipant} />
             <div className="min-w-0">
               <p className="truncate font-semibold text-ink">{participantName(otherParticipant)}</p>
-              <p className="truncate text-sm text-muted">{conversation.job?.title ?? "Awarded job chat"}</p>
+              <p className="truncate text-sm text-muted">{contextLabel}</p>
             </div>
           </div>
           <IconButton aria-label="Close chat" onClick={onClose} type="button" variant="ghost">
