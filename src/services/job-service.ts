@@ -73,7 +73,23 @@ export function updateApplication(
 }
 
 export function awardApplication(token: string, applicationId: string) {
-  return apiFetch<{ job_id: string }>(`/api/applications/${applicationId}/award`, {
+  return apiFetch<{ application: Application }>(`/api/applications/${applicationId}/award`, {
+    token,
+    method: "POST",
+    body: {}
+  });
+}
+
+export function undoAwardApplication(token: string, applicationId: string) {
+  return apiFetch<{ application: Application }>(`/api/applications/${applicationId}/undo-award`, {
+    token,
+    method: "POST",
+    body: {}
+  });
+}
+
+export function sealJobAwards(token: string, jobId: string) {
+  return apiFetch<{ job_id: string; awarded_application_ids: string[]; conversation_ids: string[] }>(`/api/jobs/${jobId}/awards/seal`, {
     token,
     method: "POST",
     body: {}

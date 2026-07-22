@@ -4,6 +4,7 @@ import type {
   SelectHTMLAttributes,
   TextareaHTMLAttributes
 } from "react";
+import { Award, CircleX, Clock3 } from "lucide-react";
 
 export function Button({
   children,
@@ -20,6 +21,29 @@ export function Button({
   return (
     <button
       className={`inline-flex min-h-11 items-center justify-center rounded-md px-4 py-3 text-sm font-semibold shadow-sm transition duration-200 hover:-translate-y-0.5 hover:shadow-md active:translate-y-0 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0 disabled:hover:shadow-sm ${variants[variant]} ${className}`}
+      {...props}
+    >
+      {children}
+    </button>
+  );
+}
+
+export function IconButton({
+  children,
+  variant = "secondary",
+  className = "",
+  ...props
+}: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: "primary" | "secondary" | "warning" | "ghost" }) {
+  const variants = {
+    primary: "border-brand bg-brand text-white hover:bg-[#125A73]",
+    secondary: "border-line bg-white text-brand hover:border-brand hover:bg-teal-50",
+    warning: "border-amber bg-amber text-white hover:bg-[#D98E13]",
+    ghost: "border-line bg-white text-muted hover:border-brand hover:text-brand"
+  };
+
+  return (
+    <button
+      className={`grid h-11 w-11 shrink-0 place-items-center rounded-full border shadow-sm transition duration-200 hover:-translate-y-0.5 hover:shadow-md active:translate-y-0 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0 disabled:hover:shadow-sm ${variants[variant]} ${className}`}
       {...props}
     >
       {children}
@@ -95,10 +119,13 @@ export function Alert({
 }
 
 export function Spinner({ className = "" }: { className?: string }) {
+  const hasCustomSize = /\b(h-|w-|size-)/.test(className);
+  const hasCustomBorder = /\bborder-/.test(className);
+
   return (
     <span
       aria-hidden="true"
-      className={`inline-block aspect-square h-4 w-4 shrink-0 animate-spin rounded-full border-2 border-current border-t-transparent ${className}`}
+      className={`inline-block aspect-square shrink-0 animate-spin rounded-full border-current border-t-transparent ${hasCustomSize ? "" : "h-12 w-12"} ${hasCustomBorder ? "" : "border-[3px]"} ${className}`}
     />
   );
 }
@@ -107,7 +134,7 @@ export function LoadingPanel({ title, body }: { title: string; body?: string }) 
   return (
     <div className="rounded-lg border border-line bg-white p-6 shadow-sm">
       <div className="flex items-start gap-4">
-        <div className="grid h-10 w-10 place-items-center rounded-md bg-teal-50 text-brand">
+        <div className="grid h-16 w-16 shrink-0 place-items-center rounded-md bg-teal-50 text-brand">
           <Spinner />
         </div>
         <div>
@@ -136,14 +163,52 @@ export function StatusPill({
   tone = "teal"
 }: {
   children: React.ReactNode;
-  tone?: "teal" | "green" | "amber" | "gray";
+  tone?: "teal" | "green" | "amber" | "gray" | "red";
 }) {
   const tones = {
     teal: "bg-teal-50 text-brand",
     green: "bg-green-50 text-green",
     amber: "bg-amber-50 text-amber",
-    gray: "bg-slate-100 text-muted"
+    gray: "bg-slate-100 text-muted",
+    red: "bg-red-50 text-red-700"
   };
 
-  return <span className={`inline-flex rounded-full px-3 py-1 text-xs font-bold ${tones[tone]}`}>{children}</span>;
+  return <span className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-bold ${tones[tone]}`}>{children}</span>;
+}
+
+export function ApplicationStatusPill({ status }: { status: string }) {
+  const normalizedStatus = status.toLowerCase();
+  const label = normalizedStatus
+    .split("_")
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+
+  if (normalizedStatus === "selected") {
+    return (
+      <StatusPill tone="amber">
+        <Clock3 className="mr-1" size={13} />
+        Selected
+      </StatusPill>
+    );
+  }
+
+  if (normalizedStatus === "awarded") {
+    return (
+      <StatusPill tone="green">
+        <Award className="mr-1" size={13} />
+        Awarded
+      </StatusPill>
+    );
+  }
+
+  if (normalizedStatus === "rejected" || normalizedStatus === "not_awarded") {
+    return (
+      <StatusPill tone="red">
+        <CircleX className="mr-1" size={13} />
+        {normalizedStatus === "not_awarded" ? "Not awarded" : "Rejected"}
+      </StatusPill>
+    );
+  }
+
+  return <StatusPill>{label}</StatusPill>;
 }

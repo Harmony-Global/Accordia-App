@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useRequireAuth } from "@/hooks/use-auth";
+import { getConversations } from "@/services/conversation-service";
 import {
   applyToJob,
   awardApplication,
@@ -11,10 +12,12 @@ import {
   getJobViews,
   getMatchedJobs,
   getMyApplications,
+  sealJobAwards,
+  undoAwardApplication,
   updateApplication,
   type CreateJobPayload
 } from "@/services/job-service";
-import type { Application, Job, JobView } from "@/types";
+import type { Application, Job, JobConversation, JobView } from "@/types";
 
 export function useClientJobs() {
   const token = useRequireAuth();
@@ -96,6 +99,7 @@ export function useMyApplications() {
 export function useJobEngagement(jobId: string | null) {
   const token = useRequireAuth();
   const [applications, setApplications] = useState<Application[]>([]);
+  const [conversations, setConversations] = useState<JobConversation[]>([]);
   const [views, setViews] = useState<JobView[]>([]);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -104,10 +108,11 @@ export function useJobEngagement(jobId: string | null) {
     if (!token || !jobId) return;
     setLoading(true);
     setError("");
-    Promise.all([getJobApplications(token, jobId), getJobViews(token, jobId)])
-      .then(([applicationData, viewData]) => {
+    Promise.all([getJobApplications(token, jobId), getJobViews(token, jobId), getConversations(token, jobId)])
+      .then(([applicationData, viewData, conversationData]) => {
         setApplications(applicationData.applications);
         setViews(viewData.views);
+        setConversations(conversationData.conversations);
       })
       .catch((err) => setError(err instanceof Error ? err.message : "Could not load job activity"))
       .finally(() => setLoading(false));
@@ -118,9 +123,24 @@ export function useJobEngagement(jobId: string | null) {
   async function award(applicationId: string) {
     if (!token) throw new Error("You need to log in again");
     const data = await awardApplication(token, applicationId);
-    refresh();
+    setApplications((current) => current.map((item) => item.id === applicationId ? { ...item, ...data.application } : item));
     return data;
   }
 
-  return { applications, views, error, loading, refresh, award };
+  async function undoAward(applicationId: string) {
+    if (!token) throw new Error("You need to log in again");
+    const data = await undoAwardApplication(token, applicationId);
+    setApplications((current) => current.map((item) => item.id === applicationId ? { ...item, ...data.application } : item));
+    return data;
+  }
+
+  async function sealAwards() {
+    if (!token || !jobId) throw new Error("Select a job first");
+    const data = await sealJobAwards(token, jobId);
+    const conversationData = await getConversations(token, jobId);
+    setConversations(conversationData.conversations);
+    return data;
+  }
+
+  return { applications, conversations, views, error, loading, refresh, award, undoAward, sealAwards };
 }

@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { CheckCircle2 } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
-import { Alert, Button, PageLoader, Spinner } from "@/components/ui";
+import { Button, PageLoader, Spinner } from "@/components/ui";
 import { useToast } from "@/components/toast";
 import { useCategories } from "@/hooks/use-categories";
 
@@ -12,7 +12,6 @@ export default function ProfessionalCategoriesPage() {
   const showToast = useToast();
   const [selected, setSelected] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState("");
 
   function toggle(id: string) {
     setSelected((current) => (current.includes(id) ? current.filter((item) => item !== id) : [...current, id]));
@@ -22,8 +21,13 @@ export default function ProfessionalCategoriesPage() {
     setSelected(selectedCategoryIds);
   }, [selectedCategoryIds]);
 
+  useEffect(() => {
+    if (loadError) {
+      showToast({ tone: "error", title: "Could not load categories", body: loadError });
+    }
+  }, [loadError, showToast]);
+
   async function save() {
-    setError("");
     setSaving(true);
 
     try {
@@ -35,7 +39,6 @@ export default function ProfessionalCategoriesPage() {
       });
     } catch (err) {
       const message = err instanceof Error ? err.message : "Could not save categories";
-      setError(message);
       showToast({ tone: "error", title: "Could not save categories", body: message });
     } finally {
       setSaving(false);
@@ -66,8 +69,6 @@ export default function ProfessionalCategoriesPage() {
           ) : "Save categories"}
         </Button>
       </div>
-      {loadError ? <div className="mb-4"><Alert>{loadError}</Alert></div> : null}
-      {error ? <div className="mb-4"><Alert>{error}</Alert></div> : null}
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
         {categories.map((category) => (
           <button

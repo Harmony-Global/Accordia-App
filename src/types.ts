@@ -88,7 +88,7 @@ export type Application = {
   pitch: string;
   proposed_rate: number | null;
   reference_image_urls: string[];
-  status: "pending" | "reviewed" | "shortlisted" | "rejected" | "awarded" | string;
+  status: "pending" | "reviewed" | "shortlisted" | "selected" | "awarded" | "not_awarded" | "rejected" | string;
   created_at: string;
   updated_at: string;
   job?: Job;
@@ -115,3 +115,89 @@ export type Notification = {
   sent_at: string | null;
   created_at: string;
 };
+
+export type JobConversation = {
+  id: string;
+  job_id: string;
+  application_id: string;
+  client_id: string;
+  professional_id: string;
+  opened_by: string | null;
+  status: "open" | "archived" | string;
+  created_at: string;
+  updated_at: string;
+  job?: Pick<Job, "id" | "title" | "status" | "category"> | null;
+  application?: Pick<Application, "id" | "status" | "pitch" | "reference_image_urls"> | null;
+  client?: Pick<Profile, "id" | "first_name" | "last_name" | "avatar_url" | "phone_verified"> | null;
+  professional?: Pick<Profile, "id" | "first_name" | "last_name" | "avatar_url" | "phone_verified"> & {
+    professional_profiles?: ProfessionalProfile | ProfessionalProfile[] | null;
+  };
+};
+
+export type ChatMessage = {
+  id: string;
+  conversation_id: string | null;
+  inquiry_id?: string | null;
+  sender_id: string;
+  receiver_id: string;
+  job_id: string | null;
+  application_id: string | null;
+  body: string;
+  is_read: boolean;
+  created_at: string;
+  sender?: Pick<Profile, "id" | "first_name" | "last_name" | "avatar_url"> | null;
+  receiver?: Pick<Profile, "id" | "first_name" | "last_name" | "avatar_url"> | null;
+};
+
+export type ProfessionalSearchResult = ProfessionalProfile & {
+  profile?: Pick<Profile, "id" | "first_name" | "last_name" | "avatar_url" | "phone_verified"> | null;
+};
+
+export type ProfessionalInquiry = {
+  id: string;
+  client_id: string;
+  professional_id: string;
+  service_id: string | null;
+  status: "open" | "archived" | string;
+  created_at: string;
+  updated_at: string;
+  client?: Pick<Profile, "id" | "first_name" | "last_name" | "avatar_url" | "phone_verified"> | null;
+  professional?: Pick<Profile, "id" | "first_name" | "last_name" | "avatar_url" | "phone_verified"> & {
+    professional_profiles?: ProfessionalProfile | ProfessionalProfile[] | null;
+  };
+  service?: ProfessionalService | null;
+};
+export type AppointmentAvailability = {
+  id: string;
+  professional_id: string;
+  service_id: string | null;
+  starts_at: string;
+  ends_at: string;
+  status: "open" | "booked" | "blocked" | string;
+  note: string | null;
+  created_at: string;
+  updated_at: string;
+  service?: ProfessionalService | null;
+};
+
+export type Appointment = {
+  id: string;
+  client_id: string;
+  professional_id: string;
+  service_id: string | null;
+  availability_id: string | null;
+  inquiry_id: string | null;
+  starts_at: string;
+  ends_at: string;
+  status: "requested" | "accepted" | "declined" | "cancelled" | "completed" | string;
+  note: string | null;
+  created_at: string;
+  updated_at: string;
+  client?: Pick<Profile, "id" | "first_name" | "last_name" | "avatar_url" | "phone_verified"> | null;
+  professional?: Pick<Profile, "id" | "first_name" | "last_name" | "avatar_url" | "phone_verified"> & {
+    professional_profiles?: ProfessionalProfile | ProfessionalProfile[] | null;
+  };
+  service?: ProfessionalService | null;
+  availability?: AppointmentAvailability | null;
+};
+

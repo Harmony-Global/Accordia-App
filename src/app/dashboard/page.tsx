@@ -1,10 +1,12 @@
 "use client";
 
 import Link from "next/link";
+import { useEffect } from "react";
 import { BriefcaseBusiness, CheckCircle2, ListChecks, MessageSquare, SearchCheck, ShieldCheck, type LucideIcon } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
 import { WorkIllustration } from "@/components/brand";
-import { Alert, Card, PageLoader, StatusPill } from "@/components/ui";
+import { Card, PageLoader, StatusPill } from "@/components/ui";
+import { useToast } from "@/components/toast";
 import { useProfile } from "@/hooks/use-auth";
 import { useClientJobs } from "@/hooks/use-jobs";
 
@@ -105,6 +107,19 @@ function OnboardingCard({
 export default function DashboardPage() {
   const { profile, error, loading } = useProfile();
   const { jobs: clientJobs, error: clientJobsError, loading: clientJobsLoading } = useClientJobs();
+  const showToast = useToast();
+
+  useEffect(() => {
+    if (error) {
+      showToast({ tone: "error", title: "Could not load profile", body: error });
+    }
+  }, [error, showToast]);
+
+  useEffect(() => {
+    if (clientJobsError && profile?.role === "client") {
+      showToast({ tone: "error", title: "Could not load jobs", body: clientJobsError });
+    }
+  }, [clientJobsError, profile?.role, showToast]);
 
   if (loading || (profile?.role === "client" && clientJobsLoading)) {
     return (
@@ -116,8 +131,6 @@ export default function DashboardPage() {
 
   return (
     <AppShell>
-      {error ? <Alert>{error}</Alert> : null}
-      {clientJobsError && profile?.role === "client" ? <div className="mb-4"><Alert>{clientJobsError}</Alert></div> : null}
       <div className="mb-6">
         <h1 className="mt-1 text-2xl font-semibold text-ink sm:text-3xl">
           {profile ? `Welcome, ${profile.first_name}` : "Welcome"}
