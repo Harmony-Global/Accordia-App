@@ -1,5 +1,16 @@
 const API_URL = (process.env.NEXT_PUBLIC_API_URL ?? (process.env.NODE_ENV === "development" ? "http://localhost:3000" : "")).replace(/\/$/, "");
 
+export class SessionExpiredError extends Error {
+  constructor(message = "Your session has expired. Please log in again.") {
+    super(message);
+    this.name = "SessionExpiredError";
+  }
+}
+
+export function isSessionExpiredError(error: unknown) {
+  return error instanceof SessionExpiredError;
+}
+
 type RequestOptions = {
   token?: string | null;
   method?: "GET" | "POST" | "PATCH" | "PUT" | "DELETE";
@@ -12,6 +23,15 @@ function requestUrl(path: string) {
   }
 
   return `${API_URL}${path}`;
+}
+
+function isSessionFailure(path: string, response: Response) {
+  return response.status === 401 && !path.includes("/api/auth/login");
+}
+
+function notifySessionExpired() {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(new CustomEvent("accordia:session-expired"));
 }
 
 function friendlyApiMessage(path: string, response: Response, data: Record<string, unknown>) {
@@ -67,7 +87,12 @@ export async function apiFetch<T>(path: string, options: RequestOptions = {}): P
   const data = await response.json().catch(() => ({}));
 
   if (!response.ok) {
-    throw new Error(friendlyApiMessage(path, response, data));
+    const message = friendlyApiMessage(path, response, data);
+    if (isSessionFailure(path, response)) {
+      notifySessionExpired();
+      throw new SessionExpiredError(message);
+    }
+    throw new Error(message);
   }
 
   return data as T;
@@ -96,8 +121,14 @@ export async function apiFormData<T>(path: string, formData: FormData, token?: s
   const data = await response.json().catch(() => ({}));
 
   if (!response.ok) {
-    throw new Error(friendlyApiMessage(path, response, data));
+    const message = friendlyApiMessage(path, response, data);
+    if (isSessionFailure(path, response)) {
+      notifySessionExpired();
+      throw new SessionExpiredError(message);
+    }
+    throw new Error(message);
   }
 
   return data as T;
 }
+

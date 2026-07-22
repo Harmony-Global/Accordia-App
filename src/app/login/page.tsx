@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { Eye, EyeOff } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { BrandLockup, StoryImageCarousel } from "@/components/brand";
 import { useSession } from "@/components/session-provider";
 import { useToast } from "@/components/toast";
@@ -21,12 +21,28 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const sessionNoticeShown = useRef(false);
 
   useEffect(() => {
     if (session.ready && session.token) {
       router.replace("/dashboard");
     }
   }, [router, session.ready, session.token]);
+
+  useEffect(() => {
+    if (!session.ready || sessionNoticeShown.current) return;
+
+    const reason = new URLSearchParams(window.location.search).get("reason");
+    if (reason !== "session-expired") return;
+
+    sessionNoticeShown.current = true;
+    showToast({
+      tone: "error",
+      title: "Session expired",
+      body: "Please log in again to continue."
+    });
+    router.replace("/login");
+  }, [router, session.ready, showToast]);
 
   if (session.ready && session.token) {
     return (
@@ -141,3 +157,6 @@ export default function LoginPage() {
     </main>
   );
 }
+
+
+

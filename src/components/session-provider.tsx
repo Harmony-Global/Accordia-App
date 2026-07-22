@@ -2,6 +2,7 @@
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { clearSession, getRole, getToken, saveSession } from "@/lib/session";
+import { isSessionExpiredError } from "@/services/http";
 import { getMyProfile } from "@/services/profile-service";
 import type { Profile } from "@/types";
 
@@ -12,6 +13,7 @@ type SessionContextValue = {
   profileError: string;
   profileLoading: boolean;
   ready: boolean;
+  sessionExpired: boolean;
   refreshProfile: () => Promise<void>;
   setSession: (accessToken: string, role: string, profile?: Profile | null) => void;
   updateProfile: (profile: Partial<Profile>) => void;
@@ -20,6 +22,8 @@ type SessionContextValue = {
 
 const SessionContext = createContext<SessionContextValue | null>(null);
 
+const sessionExpiredMessage = "Your session has expired. Please log in again.";
+
 export function SessionProvider({ children }: { children: React.ReactNode }) {
   const [token, setToken] = useState<string | null>(null);
   const [role, setRole] = useState<string | null>(null);
@@ -27,6 +31,18 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   const [profileError, setProfileError] = useState("");
   const [profileLoading, setProfileLoading] = useState(true);
   const [ready, setReady] = useState(false);
+  const [sessionExpired, setSessionExpired] = useState(false);
+
+  const expireSession = useCallback(() => {
+    clearSession();
+    setToken(null);
+    setRole(null);
+    setProfile(null);
+    setProfileError(sessionExpiredMessage);
+    setProfileLoading(false);
+    setSessionExpired(true);
+    setReady(true);
+  }, []);
 
   useEffect(() => {
     const storedToken = getToken();
@@ -35,6 +51,11 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     setProfileLoading(Boolean(storedToken));
     setReady(true);
   }, []);
+
+  useEffect(() => {
+    window.addEventListener("accordia:session-expired", expireSession);
+    return () => window.removeEventListener("accordia:session-expired", expireSession);
+  }, [expireSession]);
 
   const refreshProfile = useCallback(async () => {
     if (!token) {
@@ -49,12 +70,17 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
       const data = await getMyProfile(token);
       setProfile(data.profile);
       setRole(data.profile.role);
+      setSessionExpired(false);
     } catch (err) {
+      if (isSessionExpiredError(err)) {
+        expireSession();
+        return;
+      }
       setProfileError(err instanceof Error ? err.message : "Could not load profile");
     } finally {
       setProfileLoading(false);
     }
-  }, [token]);
+  }, [expireSession, token]);
 
   useEffect(() => {
     void refreshProfile();
@@ -64,6 +90,8 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     saveSession(accessToken, nextRole);
     setToken(accessToken);
     setRole(nextRole);
+    setProfileError("");
+    setSessionExpired(false);
     if (nextProfile !== undefined) {
       setProfile(nextProfile);
       setProfileLoading(false);
@@ -81,6 +109,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     setProfile(null);
     setProfileError("");
     setProfileLoading(false);
+    setSessionExpired(false);
   }, []);
 
   const value = useMemo(() => ({
@@ -90,11 +119,12 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     profileError,
     profileLoading,
     ready,
+    sessionExpired,
     refreshProfile,
     setSession,
     updateProfile,
     clear
-  }), [clear, profile, profileError, profileLoading, ready, refreshProfile, role, setSession, token, updateProfile]);
+  }), [clear, profile, profileError, profileLoading, ready, refreshProfile, role, sessionExpired, setSession, token, updateProfile]);
 
   return <SessionContext.Provider value={value}>{children}</SessionContext.Provider>;
 }

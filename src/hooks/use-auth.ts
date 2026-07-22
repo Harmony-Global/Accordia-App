@@ -19,13 +19,13 @@ export function useAuth() {
 
 export function useRequireAuth() {
   const router = useRouter();
-  const { ready, token } = useSession();
+  const { ready, sessionExpired, token } = useSession();
 
   useEffect(() => {
     if (ready && !token) {
-      router.push("/login");
+      router.replace(sessionExpired ? "/login?reason=session-expired" : "/login");
     }
-  }, [ready, router, token]);
+  }, [ready, router, sessionExpired, token]);
 
   return token;
 }
@@ -61,3 +61,4 @@ export function useRegisterAction() {
     router.push("/login");
   };
 }
+
