@@ -17,13 +17,38 @@ function readImages(files: FileList | null): Promise<string[]> {
   const images = Array.from(files ?? []).filter((file) => file.type.startsWith("image/")).slice(0, 3);
 
   return Promise.all(images.map((file) => new Promise<string>((resolve, reject) => {
-    if (file.size > 750 * 1024) {
-      reject(new Error("Each reference image must be smaller than 750KB."));
+    if (file.size > 5 * 1024 * 1024) {
+      reject(new Error("Each reference image must be smaller than 5MB."));
       return;
     }
 
     const reader = new FileReader();
-    reader.onload = () => resolve(typeof reader.result === "string" ? reader.result : "");
+    reader.onload = () => {
+      if (typeof reader.result !== "string") {
+        resolve("");
+        return;
+      }
+
+      const image = new window.Image();
+      image.onload = () => {
+        const maxDimension = 1200;
+        const scale = Math.min(1, maxDimension / Math.max(image.width, image.height));
+        const canvas = document.createElement("canvas");
+        canvas.width = Math.max(1, Math.round(image.width * scale));
+        canvas.height = Math.max(1, Math.round(image.height * scale));
+        const context = canvas.getContext("2d");
+
+        if (!context) {
+          resolve(reader.result as string);
+          return;
+        }
+
+        context.drawImage(image, 0, 0, canvas.width, canvas.height);
+        resolve(canvas.toDataURL("image/jpeg", 0.78));
+      };
+      image.onerror = () => reject(new Error("Could not compress one of the selected images."));
+      image.src = reader.result;
+    };
     reader.onerror = () => reject(new Error("Could not read one of the selected images."));
     reader.readAsDataURL(file);
   })));
@@ -35,7 +60,7 @@ function ReferenceImages({ images }: { images: string[] }) {
   return (
     <div className="mt-3 flex flex-wrap gap-2">
       {images.map((image, index) => (
-        <img alt={`Work reference ${index + 1}`} className="h-20 w-24 rounded-md border border-line object-cover" key={image.slice(0, 48)} src={image} />
+        <img alt={`Work reference ${index + 1}`} className="h-20 w-24 rounded-md border border-line object-cover" decoding="async" key={image.slice(0, 48)} loading="lazy" src={image} />
       ))}
     </div>
   );

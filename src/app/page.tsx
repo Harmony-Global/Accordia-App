@@ -1,39 +1,31 @@
-import Link from "next/link";
-import { ArrowRight, CheckCircle2 } from "lucide-react";
-import { BrandLockup, WorkIllustration } from "@/components/brand";
+import { ArrowCta, FigmaAuthShell, PreSignupCarousel, TrustList } from "@/components/auth/auth-ui";
 
 export default function HomePage() {
   return (
-    <main className="min-h-screen bg-white">
-      <section className="mx-auto grid min-h-screen max-w-6xl content-center gap-10 px-5 py-10 md:grid-cols-[1fr_430px] md:items-center">
-        <div>
-          <BrandLockup />
-          <h1 className="mt-8 max-w-3xl text-4xl font-semibold tracking-normal text-ink md:text-6xl">
-            Find trusted professionals and manage jobs from first message to completion.
-          </h1>
-          <p className="mt-5 max-w-2xl text-lg leading-8 text-muted">
-            Connect with artisans, service workers, creatives, and office professionals through category-matched jobs, structured applications, and visible progress tracking.
-          </p>
-          <div className="mt-6 grid gap-3 text-sm text-ink sm:grid-cols-3">
-            {["Phone-first trust", "Matched job feed", "Progress timeline"].map((item) => (
-              <div className="flex items-center gap-2" key={item}>
-                <CheckCircle2 className="text-green" size={18} />
-                {item}
-              </div>
-            ))}
-          </div>
-          <div className="mt-8 flex flex-wrap gap-3">
-            <Link className="inline-flex items-center gap-2 rounded-md bg-brand px-5 py-3 font-medium text-white" href="/register">
-              Create account
-              <ArrowRight size={18} />
-            </Link>
-            <Link className="rounded-md border border-line px-5 py-3 font-medium text-ink" href="/login">
-              Login
-            </Link>
+    <FigmaAuthShell>
+      <section className="mt-8 flex flex-col overflow-hidden rounded-[10px] border-[0.5px] border-[#196c88] bg-[#fcfdfd] md:mt-14 lg:mt-14 lg:grid lg:min-h-[540px] lg:grid-cols-[1fr_500px] lg:items-center xl:mt-16 xl:grid-cols-[1fr_520px]">
+        <div className="order-2 px-5 py-8 sm:px-8 md:py-10 lg:order-1 lg:px-9">
+          <div className="max-w-[600px]">
+            <h1 className="max-w-[560px] text-[32px] font-medium leading-[1.25] text-[#196c88] sm:text-[40px] lg:text-[44px]">
+              Start Your Journey With Accordia
+            </h1>
+            <p className="mt-4 max-w-[570px] text-[16px] font-normal leading-[1.55] text-[#5e5e5e] sm:text-[19px] lg:text-[20px]">
+              Whether you are hiring or offering your services, create an account to connect with trusted professionals, discover opportunities, manage projects, collaborate and build meaningful relationships - All in one place
+            </p>
+            <div className="mt-7 lg:mt-6">
+              <TrustList />
+            </div>
+            <div className="mt-9 grid gap-4 sm:flex sm:items-center">
+              <ArrowCta href="/register" tone="primary">Create Account</ArrowCta>
+              <ArrowCta href="/login" tone="secondary">Sign in</ArrowCta>
+            </div>
           </div>
         </div>
-        <WorkIllustration />
+        <div className="order-1 lg:order-2">
+          <PreSignupCarousel />
+        </div>
       </section>
-    </main>
+    </FigmaAuthShell>
   );
 }
+

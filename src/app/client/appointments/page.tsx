@@ -105,7 +105,7 @@ export default function ClientAppointmentsPage() {
             Track optional appointments you have requested with professionals from their profiles.
           </p>
         </div>
-        <Link className="inline-flex min-h-11 items-center justify-center gap-2 rounded-md bg-brand px-4 py-3 text-sm font-semibold text-white shadow-sm hover:bg-[#125A73]" href="/client/professionals">
+        <Link className="inline-flex min-h-11 items-center justify-center gap-2 rounded-md bg-brand px-4 py-3 text-sm font-semibold text-white shadow-sm hover:bg-[#125A73]" href="/client/find-professionals">
           <Search size={17} /> Find professionals
         </Link>
       </div>
@@ -124,7 +124,7 @@ export default function ClientAppointmentsPage() {
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div className="flex min-w-0 items-center gap-3">
                   <span className="grid h-12 w-12 shrink-0 place-items-center overflow-hidden rounded-full bg-slate-100 text-brand">
-                    {appointment.professional?.avatar_url ? <img alt="" className="h-full w-full object-cover" src={appointment.professional.avatar_url} /> : <UserRound size={19} />}
+                    {appointment.professional?.avatar_url ? <img alt="" className="h-full w-full object-cover" decoding="async" src={appointment.professional.avatar_url} /> : <UserRound size={19} />}
                   </span>
                   <div className="min-w-0">
                     <h2 className="truncate text-lg font-semibold text-ink">{personName(appointment.professional)}</h2>

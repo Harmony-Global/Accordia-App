@@ -73,9 +73,11 @@ export type Job = {
   location: string | null;
   state: string | null;
   is_remote: boolean;
+  number_of_professionals: number;
   status: string;
   views_count: number;
   applications_count: number;
+  applications?: Pick<Application, "id" | "status">[];
   categories?: Category;
   category?: Category;
   client?: Pick<Profile, "id" | "first_name" | "last_name" | "phone_verified">;
