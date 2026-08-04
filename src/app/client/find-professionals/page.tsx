@@ -126,7 +126,7 @@ function ProfessionalDetailModal({
         <div className="flex items-start justify-between gap-4">
           <div className="flex min-w-0 items-center gap-3">
             <span className="grid h-14 w-14 shrink-0 place-items-center overflow-hidden rounded-full bg-slate-100 text-brand">
-              {professional.profile?.avatar_url ? <img alt="" className="h-full w-full object-cover" src={professional.profile.avatar_url} /> : <UserRound size={22} />}
+              {professional.profile?.avatar_url ? <img alt="" className="h-full w-full object-cover" decoding="async" src={professional.profile.avatar_url} /> : <UserRound size={22} />}
             </span>
             <div className="min-w-0">
               <p className="text-sm font-medium text-brand">Professional profile</p>
@@ -180,7 +180,7 @@ function ProfessionalDetailModal({
           <div className="mt-3 grid gap-3 sm:grid-cols-2">
             {services.map((service) => (
               <article className="rounded-md border border-line bg-white p-3" key={service.id}>
-                <img alt={service.title} className="h-40 w-full rounded-md object-cover" src={service.image_url} />
+                <img alt={service.title} className="h-40 w-full rounded-md object-cover" decoding="async" loading="lazy" src={service.image_url} />
                 <div className="mt-3 flex flex-wrap items-start justify-between gap-2">
                   <div>
                     <h4 className="font-semibold text-ink">{service.title}</h4>
@@ -280,7 +280,7 @@ function ProfessionalCard({
     <article className="rounded-lg border border-line bg-white p-4 shadow-sm transition hover:border-slate-300 sm:p-5">
       <div className="flex items-start gap-3">
         <span className="grid h-12 w-12 shrink-0 place-items-center overflow-hidden rounded-full bg-slate-100 text-brand">
-          {professional.profile?.avatar_url ? <img alt="" className="h-full w-full object-cover" src={professional.profile.avatar_url} /> : <UserRound size={20} />}
+          {professional.profile?.avatar_url ? <img alt="" className="h-full w-full object-cover" decoding="async" src={professional.profile.avatar_url} /> : <UserRound size={20} />}
         </span>
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-start justify-between gap-3">
@@ -319,7 +319,7 @@ function ProfessionalCard({
             <div className="mt-4 grid gap-2 sm:grid-cols-2">
               {services.slice(0, 2).map((service) => (
                 <div className="flex gap-3 rounded-md border border-line bg-white p-2" key={service.id}>
-                  <img alt={service.title} className="h-16 w-16 rounded-md object-cover" src={service.image_url} />
+                  <img alt={service.title} className="h-16 w-16 rounded-md object-cover" decoding="async" loading="lazy" src={service.image_url} />
                   <div className="min-w-0">
                     <p className="truncate text-sm font-semibold text-ink">{service.title}</p>
                     <p className="mt-1 text-xs text-muted">

@@ -5,6 +5,7 @@ export type CreateJobPayload = {
   title: string;
   description: string;
   category_id: string;
+  number_of_professionals: number;
   location: string;
   state: string;
   is_remote: boolean;

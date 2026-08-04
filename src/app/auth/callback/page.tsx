@@ -39,8 +39,11 @@ export default function AuthCallbackPage() {
 
   function handleOAuthResponse(accessToken: string, data: OAuthProfileResponse) {
     if (data.profile) {
+      if (!data.app_session_id) {
+        throw new Error("Could not create a secure app session.");
+      }
       setLoading(true);
-      session.setSession(accessToken, data.profile.role, data.profile);
+      session.setSession(accessToken, data.profile.role, data.app_session_id, data.profile);
       showToast({ tone: "success", title: "Google sign-in successful", body: "Your workspace is ready." });
       router.replace(routeAfterAuth(data.profile));
       return true;

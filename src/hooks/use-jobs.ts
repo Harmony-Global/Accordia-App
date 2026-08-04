@@ -19,17 +19,24 @@ import {
 } from "@/services/job-service";
 import type { Application, Job, JobConversation, JobView } from "@/types";
 
+let cachedClientJobs: Job[] = [];
+let cachedMatchedJobs: Job[] = [];
+let cachedMyApplications: Application[] = [];
+
 export function useClientJobs() {
   const token = useRequireAuth();
-  const [jobs, setJobs] = useState<Job[]>([]);
+  const [jobs, setJobs] = useState<Job[]>(cachedClientJobs);
   const [error, setError] = useState("");
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(cachedClientJobs.length === 0);
 
   const refresh = useCallback(() => {
     if (!token) return;
-    setLoading(true);
+    if (cachedClientJobs.length === 0) setLoading(true);
     getClientJobs(token)
-      .then((data) => setJobs(data.jobs))
+      .then((data) => {
+        cachedClientJobs = data.jobs;
+        setJobs(data.jobs);
+      })
       .catch((err) => setError(err instanceof Error ? err.message : "Could not load jobs"))
       .finally(() => setLoading(false));
   }, [token]);
@@ -46,15 +53,18 @@ export function useClientJobs() {
 
 export function useMatchedJobs() {
   const token = useRequireAuth();
-  const [jobs, setJobs] = useState<Job[]>([]);
+  const [jobs, setJobs] = useState<Job[]>(cachedMatchedJobs);
   const [error, setError] = useState("");
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(cachedMatchedJobs.length === 0);
 
   const refresh = useCallback(() => {
     if (!token) return;
-    setLoading(true);
+    if (cachedMatchedJobs.length === 0) setLoading(true);
     getMatchedJobs(token)
-      .then((data) => setJobs(data.jobs))
+      .then((data) => {
+        cachedMatchedJobs = data.jobs;
+        setJobs(data.jobs);
+      })
       .catch((err) => setError(err instanceof Error ? err.message : "Could not load matched jobs"))
       .finally(() => setLoading(false));
   }, [token]);
@@ -71,15 +81,18 @@ export function useMatchedJobs() {
 
 export function useMyApplications() {
   const token = useRequireAuth();
-  const [applications, setApplications] = useState<Application[]>([]);
+  const [applications, setApplications] = useState<Application[]>(cachedMyApplications);
   const [error, setError] = useState("");
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(cachedMyApplications.length === 0);
 
   const refresh = useCallback(() => {
     if (!token) return;
-    setLoading(true);
+    if (cachedMyApplications.length === 0) setLoading(true);
     getMyApplications(token)
-      .then((data) => setApplications(data.applications))
+      .then((data) => {
+        cachedMyApplications = data.applications;
+        setApplications(data.applications);
+      })
       .catch((err) => setError(err instanceof Error ? err.message : "Could not load applications"))
       .finally(() => setLoading(false));
   }, [token]);
@@ -89,7 +102,11 @@ export function useMyApplications() {
   async function saveApplication(applicationId: string, payload: { pitch?: string; proposed_rate?: number | null; reference_image_urls?: string[] }) {
     if (!token) throw new Error("You need to log in again");
     const data = await updateApplication(token, applicationId, payload);
-    setApplications((current) => current.map((item) => item.id === applicationId ? data.application : item));
+    setApplications((current) => {
+      const nextApplications = current.map((item) => item.id === applicationId ? data.application : item);
+      cachedMyApplications = nextApplications;
+      return nextApplications;
+    });
     return data.application;
   }
 

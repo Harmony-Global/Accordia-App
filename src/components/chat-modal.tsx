@@ -12,13 +12,24 @@ import type { ChatMessage, JobConversation, ProfessionalInquiry, Profile } from 
 function Avatar({ profile }: { profile?: Pick<Profile, "first_name" | "last_name" | "avatar_url"> | null }) {
   return (
     <span className="grid h-9 w-9 shrink-0 place-items-center overflow-hidden rounded-full bg-slate-100 text-brand">
-      {profile?.avatar_url ? <img alt="" className="h-full w-full object-cover" src={profile.avatar_url} /> : <UserRound size={17} />}
+      {profile?.avatar_url ? <img alt="" className="h-full w-full object-cover" decoding="async" src={profile.avatar_url} /> : <UserRound size={17} />}
     </span>
   );
 }
 
 function participantName(profile?: Pick<Profile, "first_name" | "last_name"> | null) {
   return `${profile?.first_name ?? ""} ${profile?.last_name ?? ""}`.trim() || "Accordia user";
+}
+
+const CONTACT_INFO_MESSAGE = "For safety, keep communication inside Accordia. Do not share phone numbers, email addresses, or external contact links in chat.";
+const EMAIL_PATTERN = /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i;
+const PHONE_PATTERN = /\+?\d[\d\s().-]{7,}\d/g;
+const URL_PATTERN = /\b(?:https?:\/\/|www\.)\S+/i;
+
+function containsContactInfo(value: string) {
+  if (EMAIL_PATTERN.test(value) || URL_PATTERN.test(value)) return true;
+  const candidates = value.match(PHONE_PATTERN) ?? [];
+  return candidates.some((candidate) => candidate.replace(/\D/g, "").length >= 9);
 }
 
 export function ChatModal({
@@ -35,6 +46,7 @@ export function ChatModal({
   const showToast = useToast();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [draft, setDraft] = useState("");
+  const [contactWarning, setContactWarning] = useState("");
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
 
@@ -93,6 +105,10 @@ export function ChatModal({
   async function sendMessage() {
     const body = draft.trim();
     if (!token || !body) return;
+    if (containsContactInfo(body)) {
+      setContactWarning(CONTACT_INFO_MESSAGE);
+      return;
+    }
 
     setSending(true);
     try {
@@ -102,6 +118,7 @@ export function ChatModal({
       setMessages((current) => [...current, data.message]);
       await (kind === "job" ? markConversationRead(token, conversation.id) : markInquiryRead(token, conversation.id)).catch(() => undefined);
       setDraft("");
+      setContactWarning("");
     } catch (err) {
       const message = err instanceof Error ? err.message : "Could not send message";
       showToast({ tone: "error", title: "Message failed", body: message });
@@ -111,8 +128,8 @@ export function ChatModal({
   }
 
   return (
-    <div className="fixed inset-0 z-[80] flex items-end justify-center bg-black/50 p-0 sm:items-center sm:p-4">
-      <section className="flex h-[92vh] w-full flex-col rounded-t-lg border border-line bg-white shadow-xl sm:h-[min(720px,88vh)] sm:max-w-2xl sm:rounded-lg">
+    <div className="fixed inset-0 z-[80] flex items-start justify-center overflow-y-auto bg-black/10 p-3 backdrop-blur-[2px] sm:p-4">
+      <section className="mt-2 flex h-[min(760px,92vh)] w-full max-w-[430px] flex-col overflow-hidden rounded-[10px] border border-line bg-white shadow-[0_-2px_4px_rgba(0,0,0,0.05),0_2px_4px_rgba(0,0,0,0.05)] sm:mt-4 sm:max-w-2xl">
         <header className="flex items-start justify-between gap-4 border-b border-line p-4">
           <div className="flex min-w-0 items-center gap-3">
             <Avatar profile={otherParticipant} />
@@ -153,6 +170,13 @@ export function ChatModal({
                   </div>
                 );
               })}
+              {contactWarning ? (
+                <div className="flex justify-start">
+                  <div className="max-w-[82%] rounded-[10px] border border-red-100 bg-red-50 px-4 py-3 text-sm font-medium leading-6 text-red-700 shadow-sm">
+                    <p>{contactWarning}</p>
+                  </div>
+                </div>
+              ) : null}
             </div>
           ) : null}
         </div>
@@ -160,7 +184,10 @@ export function ChatModal({
         <footer className="border-t border-line bg-white p-4">
           <TextAreaField
             label="Message"
-            onChange={(event) => setDraft(event.target.value)}
+            onChange={(event) => {
+              setDraft(event.target.value);
+              if (contactWarning && !containsContactInfo(event.target.value)) setContactWarning("");
+            }}
             onKeyDown={(event) => {
               if (event.key === "Enter" && !event.shiftKey) {
                 event.preventDefault();
