@@ -13,6 +13,7 @@ import { createJob } from "@/services/job-service";
 
 const MIN_PROFESSIONALS = 1;
 const MAX_PROFESSIONALS = 50;
+type WorkType = "remote" | "in_person";
 
 function clampProfessionals(value: number) {
   if (Number.isNaN(value)) return MIN_PROFESSIONALS;
@@ -26,6 +27,7 @@ export default function NewJobPage() {
   const { categories, error: categoryError, loading: categoriesLoading } = useCategories();
   const [loading, setLoading] = useState(false);
   const [numberOfProfessionals, setNumberOfProfessionals] = useState(1);
+  const [workType, setWorkType] = useState<WorkType>("in_person");
 
   useEffect(() => {
     if (categoryError) {
@@ -35,6 +37,7 @@ export default function NewJobPage() {
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (loading) return;
     setLoading(true);
 
     const form = new FormData(event.currentTarget);
@@ -47,17 +50,17 @@ export default function NewJobPage() {
         number_of_professionals: numberOfProfessionals,
         location: String(form.get("location")),
         state: String(form.get("state")),
-        is_remote: form.get("is_remote") === "on"
+        is_remote: workType === "remote"
       });
       showToast({
         tone: "success",
-        title: "Job published",
-        body: "Professionals can now find and apply to this job."
+        title: "Request published",
+        body: "Professionals can now find and apply to this request."
       });
       router.push("/client/my-requests");
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Could not create job";
-      showToast({ tone: "error", title: "Could not publish job", body: message });
+      const message = err instanceof Error ? err.message : "Could not create request";
+      showToast({ tone: "error", title: "Could not publish request", body: message });
     } finally {
       setLoading(false);
     }
@@ -74,7 +77,7 @@ export default function NewJobPage() {
       <form className="rounded-[10px] border border-line bg-white p-4 shadow-[0_-2px_4px_rgba(0,0,0,0.05),0_2px_4px_rgba(0,0,0,0.05)] sm:p-6 md:p-8 lg:p-7" onSubmit={submit}>
         <div className="grid gap-6 lg:grid-cols-2">
           <label className="block text-sm font-medium leading-6 text-[#585858] lg:col-span-2">
-            Request Title
+            Service Request Title
             <input
               className="mt-2 h-12 w-full rounded-[10px] border border-[#d0d0d0] bg-white px-4 text-sm text-ink outline-none transition hover:border-[#a4a4a4] focus:border-brand focus:ring-4 focus:ring-teal-100"
               name="title"
@@ -162,12 +165,41 @@ export default function NewJobPage() {
             />
           </label>
 
-          <label className="flex items-center gap-2 text-sm font-normal text-[#5e5e5e] lg:col-span-2">
-            <input className="h-4 w-4 rounded border-[#757575] text-brand focus:ring-brand" name="is_remote" type="checkbox" />
-            Remote work
-          </label>
+          <fieldset className="space-y-3 lg:col-span-2">
+            <legend className="sr-only">Work type</legend>
+            <div className="flex flex-wrap items-center gap-5 sm:gap-8">
+              {[
+                { value: "remote" as const, label: "Remote work" },
+                { value: "in_person" as const, label: "In-person" }
+              ].map((option) => {
+                const selected = workType === option.value;
+                return (
+                  <label className="inline-flex cursor-pointer items-center gap-2 text-sm font-normal text-[#5e5e5e]" key={option.value}>
+                    <input
+                      checked={selected}
+                      className="sr-only"
+                      name="work_type"
+                      onChange={() => setWorkType(option.value)}
+                      type="radio"
+                      value={option.value}
+                    />
+                    <span
+                      aria-hidden="true"
+                      className={`grid h-[18px] w-[18px] place-items-center rounded-[4px] border transition ${selected ? "border-[#135166] bg-[#135166]" : "border-[#757575] bg-white"}`}
+                    >
+                      {selected ? <span className="h-1.5 w-2.5 rotate-[-45deg] border-b-2 border-l-2 border-white" /> : null}
+                    </span>
+                    {option.label}
+                  </label>
+                );
+              })}
+            </div>
+            <p className="max-w-4xl text-xs font-medium leading-5 text-[#196c88] sm:text-sm">
+              For in-person jobs, contact details becomes available after an upfront payment is secured
+            </p>
+          </fieldset>
         </div>
-        <Button className="mt-5 w-full rounded-[5px] px-4 py-3 sm:w-auto" disabled={loading} type="submit">
+        <Button aria-busy={loading} className="mt-5 w-full rounded-[5px] px-4 py-3 sm:w-auto" disabled={loading} type="submit">
           {loading ? (
             <span className="inline-flex items-center gap-2">
               <Spinner className="h-5 w-5 border-2" />

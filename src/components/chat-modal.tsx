@@ -1,11 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Send, UserRound, X } from "lucide-react";
-import { Button, IconButton, Spinner, TextAreaField } from "@/components/ui";
+import { AlertCircle, CheckCircle2, Send, UserRound, X } from "lucide-react";
+import { Button, IconButton, Spinner } from "@/components/ui";
 import { useToast } from "@/components/toast";
 import { useAuth, useRequireAuth } from "@/hooks/use-auth";
-import { getConversationMessages, markConversationRead, sendConversationMessage } from "@/services/conversation-service";
+import { getConversationMessages, hireConversationProfessional, markConversationRead, sendConversationMessage } from "@/services/conversation-service";
 import { getInquiryMessages, markInquiryRead, sendInquiryMessage } from "@/services/inquiry-service";
 import type { ChatMessage, JobConversation, ProfessionalInquiry, Profile } from "@/types";
 
@@ -21,7 +21,8 @@ function participantName(profile?: Pick<Profile, "first_name" | "last_name"> | n
   return `${profile?.first_name ?? ""} ${profile?.last_name ?? ""}`.trim() || "Accordia user";
 }
 
-const CONTACT_INFO_MESSAGE = "For safety, keep communication inside Accordia. Do not share phone numbers, email addresses, or external contact links in chat.";
+const IN_PERSON_CONTACT_LOCKED_MESSAGE = "This message was blocked! Make upfront payment and sharing of personal details will be activated to help coordinate meeting.";
+const REMOTE_CONTACT_LOCKED_MESSAGE = "This message was blocked for violating platform rules of sharing link and phone number.";
 const EMAIL_PATTERN = /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i;
 const PHONE_PATTERN = /\+?\d[\d\s().-]{7,}\d/g;
 const URL_PATTERN = /\b(?:https?:\/\/|www\.)\S+/i;
@@ -35,36 +36,60 @@ function containsContactInfo(value: string) {
 export function ChatModal({
   conversation,
   kind = "job",
+  onHired,
   onClose
 }: {
   conversation: JobConversation | ProfessionalInquiry;
   kind?: "job" | "inquiry";
+  onHired?: (conversation: JobConversation) => void;
   onClose: () => void;
 }) {
   const token = useRequireAuth();
   const { profile } = useAuth();
   const showToast = useToast();
+  const [currentConversation, setCurrentConversation] = useState(conversation);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [draft, setDraft] = useState("");
   const [contactWarning, setContactWarning] = useState("");
+  const [hireStep, setHireStep] = useState<"ready" | "payment" | "paid">("ready");
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
+  const [hiring, setHiring] = useState(false);
+
+  useEffect(() => {
+    setCurrentConversation(conversation);
+    setHireStep("ready");
+    setContactWarning("");
+  }, [conversation]);
 
   const otherParticipant = useMemo(() => {
-    if (!profile) return conversation.professional ?? conversation.client;
-    return profile.id === conversation.client_id ? conversation.professional : conversation.client;
-  }, [conversation, profile]);
+    if (!profile) return currentConversation.professional ?? currentConversation.client;
+    return profile.id === currentConversation.client_id ? currentConversation.professional : currentConversation.client;
+  }, [currentConversation, profile]);
   const contextLabel = kind === "job"
-    ? (conversation as JobConversation).job?.title ?? "Awarded job chat"
-    : (conversation as ProfessionalInquiry).service?.title ?? "Professional inquiry";
+    ? (currentConversation as JobConversation).job?.title ?? "Job chat"
+    : (currentConversation as ProfessionalInquiry).service?.title ?? "Professional inquiry";
+  const jobConversation = kind === "job" ? currentConversation as JobConversation : null;
+  const isClient = Boolean(jobConversation && profile?.id === jobConversation.client_id);
+  const isRemoteJob = jobConversation?.job?.is_remote === true;
+  const isInPersonJob = jobConversation?.job?.is_remote === false;
+  const hasUpfrontPayment = Boolean(jobConversation?.upfront_payment_made_at);
+  const isHired = ["selected", "awarded", "hired", "in_progress", "inprogress"].includes(jobConversation?.application?.status?.toLowerCase() ?? "");
+  const canExchangeContactInfo = Boolean(jobConversation && isInPersonJob && hasUpfrontPayment);
+  const chatDisclaimer = isInPersonJob
+    ? hasUpfrontPayment
+      ? "For in-person jobs, contact details can now be exchanged because an upfront payment has been secured to help you coordinate the meeting."
+      : "For in-person jobs, contact details can be exchanged after an upfront payment is secured to help you coordinate the meeting."
+    : "For remote jobs, communication is managed through Accordia's messaging system. Phone numbers, addresses and external links are restricted to help keep projects secure.";
+  const hireName = participantName(otherParticipant);
 
   const loadMessages = useCallback(async (showLoading = false) => {
     if (!token) return;
     if (showLoading) setLoading(true);
 
     const data = kind === "job"
-      ? await getConversationMessages(token, conversation.id)
-      : await getInquiryMessages(token, conversation.id);
+      ? await getConversationMessages(token, currentConversation.id)
+      : await getInquiryMessages(token, currentConversation.id);
     setMessages((current) => {
       if (
         current.length === data.messages.length
@@ -75,8 +100,8 @@ export function ChatModal({
 
       return data.messages;
     });
-    await (kind === "job" ? markConversationRead(token, conversation.id) : markInquiryRead(token, conversation.id)).catch(() => undefined);
-  }, [conversation.id, kind, token]);
+    await (kind === "job" ? markConversationRead(token, currentConversation.id) : markInquiryRead(token, currentConversation.id)).catch(() => undefined);
+  }, [currentConversation.id, kind, token]);
 
   useEffect(() => {
     if (!token) return;
@@ -105,18 +130,18 @@ export function ChatModal({
   async function sendMessage() {
     const body = draft.trim();
     if (!token || !body) return;
-    if (containsContactInfo(body)) {
-      setContactWarning(CONTACT_INFO_MESSAGE);
+    if (containsContactInfo(body) && !canExchangeContactInfo) {
+      setContactWarning(jobConversation && isInPersonJob ? IN_PERSON_CONTACT_LOCKED_MESSAGE : REMOTE_CONTACT_LOCKED_MESSAGE);
       return;
     }
 
     setSending(true);
     try {
       const data = kind === "job"
-        ? await sendConversationMessage(token, conversation.id, body)
-        : await sendInquiryMessage(token, conversation.id, body);
+        ? await sendConversationMessage(token, currentConversation.id, body)
+        : await sendInquiryMessage(token, currentConversation.id, body);
       setMessages((current) => [...current, data.message]);
-      await (kind === "job" ? markConversationRead(token, conversation.id) : markInquiryRead(token, conversation.id)).catch(() => undefined);
+      await (kind === "job" ? markConversationRead(token, currentConversation.id) : markInquiryRead(token, currentConversation.id)).catch(() => undefined);
       setDraft("");
       setContactWarning("");
     } catch (err) {
@@ -127,9 +152,79 @@ export function ChatModal({
     }
   }
 
+  async function confirmUpfrontPayment() {
+    if (!token || !jobConversation) return;
+    setHiring(true);
+
+    try {
+      const data = await hireConversationProfessional(token, jobConversation.id);
+      setCurrentConversation(data.conversation);
+      setHireStep("paid");
+      onHired?.(data.conversation);
+      showToast({
+        tone: "success",
+        title: "Upfront payment has been made",
+        body: "The professional has been moved to hired."
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Could not complete upfront payment";
+      showToast({ tone: "error", title: "Payment failed", body: message });
+    } finally {
+      setHiring(false);
+    }
+  }
+
   return (
     <div className="fixed inset-0 z-[80] flex items-start justify-center overflow-y-auto bg-black/10 p-3 backdrop-blur-[2px] sm:p-4">
-      <section className="mt-2 flex h-[min(760px,92vh)] w-full max-w-[430px] flex-col overflow-hidden rounded-[10px] border border-line bg-white shadow-[0_-2px_4px_rgba(0,0,0,0.05),0_2px_4px_rgba(0,0,0,0.05)] sm:mt-4 sm:max-w-2xl">
+      <section className="mt-2 flex h-[min(860px,92vh)] w-full max-w-[430px] flex-col overflow-hidden rounded-[10px] border border-line bg-white shadow-[0_-2px_4px_rgba(0,0,0,0.05),0_2px_4px_rgba(0,0,0,0.05)] sm:mt-4 sm:max-w-[860px] lg:max-w-[920px]">
+        {isClient && jobConversation && !isHired && !hasUpfrontPayment && hireStep === "ready" ? (
+          <div className="m-4 mb-0 rounded-[8px] border-b-[3px] border-[#f4a422] bg-[#fffbe6] p-4">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex min-w-0 items-start gap-3">
+                <CheckCircle2 className="mt-0.5 shrink-0 text-[#f4a422]" size={28} strokeWidth={1.7} />
+                <div>
+                  <p className="text-[16px] font-semibold text-[#5e5e5e]">Ready to hire {hireName}?</p>
+                  <p className="mt-1 text-sm leading-5 text-[#757575]">If you are satisfied with your conversation, hire this professional to continue.</p>
+                </div>
+              </div>
+              <Button className="shrink-0 rounded-[5px] px-5" onClick={() => setHireStep("payment")} type="button">
+                Hire Professional
+              </Button>
+            </div>
+          </div>
+        ) : null}
+        {isClient && jobConversation && !isHired && !hasUpfrontPayment && hireStep === "payment" ? (
+          <div className="m-4 mb-0 rounded-[8px] border-b-[3px] border-[#f4a422] bg-[#fffbe6] p-4">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex min-w-0 items-start gap-3">
+                <CheckCircle2 className="mt-0.5 shrink-0 text-[#f4a422]" size={28} strokeWidth={1.7} />
+                <div>
+                  <p className="text-[16px] font-semibold text-[#5e5e5e]">Make Upfront Payment</p>
+                  <p className="mt-1 text-sm leading-5 text-[#757575]">Accordia securely holds your payment until you confirm satisfactory completion of job.</p>
+                </div>
+              </div>
+              <Button className="shrink-0 rounded-[5px] px-7" disabled={hiring} onClick={confirmUpfrontPayment} type="button">
+                {hiring ? <span className="inline-flex items-center gap-2"><Spinner className="h-5 w-5 border-[3px]" /> Processing</span> : "Proceed"}
+              </Button>
+            </div>
+          </div>
+        ) : null}
+        {jobConversation && (hasUpfrontPayment || hireStep === "paid") ? (
+          <div className="m-4 mb-0 rounded-[8px] border-b-[3px] border-[#0fa269] bg-[#f3fef3] p-4">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex min-w-0 items-start gap-3">
+                <CheckCircle2 className="mt-0.5 shrink-0 text-[#0fa269]" size={28} strokeWidth={1.7} />
+                <div>
+                  <p className="text-[16px] font-semibold text-[#5e5e5e]">Upfront payment successfully made</p>
+                  <p className="mt-1 text-sm leading-5 text-[#757575]">{isInPersonJob ? "Contacts can now be exchanged to help meeting coordination." : "Monitor active jobs from the active jobs page."}</p>
+                </div>
+              </div>
+              <Button className="shrink-0 rounded-[5px] px-5" type="button" variant="secondary">
+                View details
+              </Button>
+            </div>
+          </div>
+        ) : null}
         <header className="flex items-start justify-between gap-4 border-b border-line p-4">
           <div className="flex min-w-0 items-center gap-3">
             <Avatar profile={otherParticipant} />
@@ -143,7 +238,7 @@ export function ChatModal({
           </IconButton>
         </header>
 
-        <div className="flex-1 overflow-y-auto bg-slate-50 px-4 py-5">
+        <div className="flex-1 overflow-y-auto bg-slate-50 px-4 py-5 sm:px-6 lg:px-7">
           {loading ? (
             <div className="flex h-full items-center justify-center text-brand">
               <Spinner className="h-14 w-14 border-[3px]" />
@@ -156,12 +251,12 @@ export function ChatModal({
             </div>
           ) : null}
           {!loading ? (
-            <div className="space-y-3">
+            <div className="space-y-4">
               {messages.map((message) => {
                 const mine = message.sender_id === profile?.id;
                 return (
                   <div className={`flex ${mine ? "justify-end" : "justify-start"}`} key={message.id}>
-                    <div className={`max-w-[82%] rounded-lg px-4 py-3 text-sm leading-6 shadow-sm ${mine ? "bg-brand text-white" : "border border-line bg-white text-ink"}`}>
+                    <div className={`max-w-[82%] rounded-lg px-4 py-3 text-sm leading-6 shadow-sm sm:max-w-[52%] ${mine ? "bg-brand text-white" : "border border-line bg-white text-ink"}`}>
                       <p>{message.body}</p>
                       <p className={`mt-2 text-[11px] ${mine ? "text-white/75" : "text-muted"}`}>
                         {new Date(message.created_at).toLocaleString()}
@@ -171,9 +266,15 @@ export function ChatModal({
                 );
               })}
               {contactWarning ? (
-                <div className="flex justify-start">
-                  <div className="max-w-[82%] rounded-[10px] border border-red-100 bg-red-50 px-4 py-3 text-sm font-medium leading-6 text-red-700 shadow-sm">
-                    <p>{contactWarning}</p>
+                <div className="flex justify-center sm:justify-end sm:pr-12">
+                  <div className="relative w-full max-w-[560px] rounded-[10px] border border-red-100 border-b-[3px] border-b-red-700 bg-red-50 px-4 py-5 pr-11 text-[15px] font-medium leading-7 text-[#5e5e5e] shadow-sm sm:px-7 sm:py-6 sm:text-[18px]">
+                    <button aria-label="Dismiss blocked message" className="absolute right-4 top-4 text-black transition hover:text-red-700" onClick={() => setContactWarning("")} type="button">
+                      <X size={18} />
+                    </button>
+                    <div className="flex items-center gap-4">
+                      <AlertCircle className="shrink-0 text-red-700" size={36} strokeWidth={2.1} />
+                      <p>{contactWarning}</p>
+                    </div>
                   </div>
                 </div>
               ) : null}
@@ -181,26 +282,44 @@ export function ChatModal({
           ) : null}
         </div>
 
-        <footer className="border-t border-line bg-white p-4">
-          <TextAreaField
-            label="Message"
-            onChange={(event) => {
-              setDraft(event.target.value);
-              if (contactWarning && !containsContactInfo(event.target.value)) setContactWarning("");
-            }}
-            onKeyDown={(event) => {
-              if (event.key === "Enter" && !event.shiftKey) {
-                event.preventDefault();
-                sendMessage();
-              }
-            }}
-            placeholder="Write a message..."
-            rows={3}
-            value={draft}
-          />
-          <Button className="mt-3 w-full" disabled={sending || draft.trim().length === 0} onClick={sendMessage} type="button">
-            {sending ? <span className="inline-flex items-center gap-2"><Spinner className="h-6 w-6 border-[3px]" /> Sending</span> : <span className="inline-flex items-center gap-2"><Send size={18} /> Send message</span>}
-          </Button>
+        <footer className="border-t border-line bg-white p-4 sm:px-6 lg:px-7">
+          <div className="relative">
+            <label className="sr-only" htmlFor="chat-message-input">Message</label>
+            <textarea
+              className="min-h-[104px] w-full resize-none rounded-[6px] border border-line bg-white px-4 py-4 pr-20 text-sm outline-none transition duration-200 hover:border-slate-300 focus:border-brand focus:ring-4 focus:ring-teal-100 sm:min-h-[116px]"
+              id="chat-message-input"
+              onChange={(event) => {
+                setDraft(event.target.value);
+                if (contactWarning && (!containsContactInfo(event.target.value) || canExchangeContactInfo)) setContactWarning("");
+              }}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" && !event.shiftKey) {
+                  event.preventDefault();
+                  sendMessage();
+                }
+              }}
+              placeholder="Type message..."
+              rows={3}
+              value={draft}
+            />
+            <Button
+              aria-label={sending ? "Sending message" : "Send message"}
+              className="absolute bottom-4 right-4 h-12 w-12 rounded-[5px] p-0 sm:h-12 sm:w-12"
+              disabled={sending || draft.trim().length === 0}
+              onClick={sendMessage}
+              type="button"
+            >
+              {sending ? <Spinner className="h-5 w-5 border-2" /> : <Send size={22} />}
+            </Button>
+          </div>
+          {jobConversation ? (
+            <div className="mt-4 flex items-start gap-3 text-sm font-medium leading-6 text-[#5e5e5e]">
+              <AlertCircle className="mt-0.5 shrink-0 text-[#f4a422]" size={22} />
+              <p>
+                {chatDisclaimer}
+              </p>
+            </div>
+          ) : null}
         </footer>
       </section>
     </div>

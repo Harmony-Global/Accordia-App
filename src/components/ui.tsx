@@ -4,7 +4,7 @@ import type {
   SelectHTMLAttributes,
   TextareaHTMLAttributes
 } from "react";
-import { Award, CircleX, Clock3 } from "lucide-react";
+import { CircleX, Clock3 } from "lucide-react";
 
 export function Button({
   children,
@@ -125,7 +125,7 @@ export function Spinner({ className = "" }: { className?: string }) {
   return (
     <span
       aria-hidden="true"
-      className={`inline-block aspect-square shrink-0 animate-spin rounded-full border-current border-t-transparent ${hasCustomSize ? "" : "h-12 w-12"} ${hasCustomBorder ? "" : "border-[3px]"} ${className}`}
+      className={`inline-block aspect-square shrink-0 animate-spin rounded-full border-current border-t-transparent ${hasCustomSize ? "" : "h-5 w-5"} ${hasCustomBorder ? "" : "border-[2px]"} ${className}`}
     />
   );
 }
@@ -133,13 +133,11 @@ export function Spinner({ className = "" }: { className?: string }) {
 export function LoadingPanel({ title, body }: { title: string; body?: string }) {
   return (
     <div className="rounded-lg border border-line bg-white p-6 shadow-sm">
-      <div className="flex items-start gap-4">
-        <div className="grid h-16 w-16 shrink-0 place-items-center rounded-md bg-teal-50 text-brand">
-          <Spinner />
-        </div>
-        <div>
-          <h2 className="font-semibold text-ink">{title}</h2>
-          {body ? <p className="mt-1 text-sm leading-6 text-muted">{body}</p> : null}
+      <div className="flex items-start gap-4" aria-busy="true" aria-label={title}>
+        <div className="h-16 w-16 shrink-0 animate-pulse rounded-md bg-slate-100 shadow-[0_8px_24px_rgba(15,23,42,0.08)]" />
+        <div className="min-w-0 flex-1">
+          <div className="h-4 w-40 animate-pulse rounded-full bg-slate-200 shadow-[0_6px_18px_rgba(15,23,42,0.08)]" />
+          {body ? <div className="mt-3 h-3 w-full max-w-sm animate-pulse rounded-full bg-slate-100 shadow-[0_6px_18px_rgba(15,23,42,0.06)]" /> : null}
         </div>
       </div>
     </div>
@@ -148,8 +146,21 @@ export function LoadingPanel({ title, body }: { title: string; body?: string }) 
 
 export function PageLoader() {
   return (
-    <div className="flex min-h-[55vh] items-center justify-center text-brand">
-      <Spinner className="h-20 w-20 border-[3px]" />
+    <div className="grid min-h-[55vh] place-items-center" aria-busy="true" aria-label="Loading page">
+      <div className="w-full max-w-3xl space-y-4 px-3">
+        {Array.from({ length: 3 }).map((_, index) => (
+          <div className="rounded-lg border border-line bg-white p-4 shadow-sm" key={index}>
+            <div className="flex gap-4">
+              <div className="h-14 w-14 shrink-0 animate-pulse rounded-full bg-slate-100 shadow-[0_8px_24px_rgba(15,23,42,0.08)]" />
+              <div className="min-w-0 flex-1 space-y-3">
+                <div className="h-4 w-2/5 animate-pulse rounded-full bg-slate-200 shadow-[0_6px_18px_rgba(15,23,42,0.08)]" />
+                <div className="h-3 w-full animate-pulse rounded-full bg-slate-100 shadow-[0_6px_18px_rgba(15,23,42,0.06)]" />
+                <div className="h-3 w-3/4 animate-pulse rounded-full bg-slate-100 shadow-[0_6px_18px_rgba(15,23,42,0.06)]" />
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
@@ -183,20 +194,29 @@ export function ApplicationStatusPill({ status }: { status: string }) {
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join(" ");
 
-  if (normalizedStatus === "selected") {
+  if (normalizedStatus === "selected" || normalizedStatus === "awarded") {
     return (
-      <StatusPill tone="amber">
+      <StatusPill tone="green">
         <Clock3 className="mr-1" size={13} />
-        Selected
+        Hired
       </StatusPill>
     );
   }
 
-  if (normalizedStatus === "awarded") {
+  if (normalizedStatus === "pending") {
     return (
-      <StatusPill tone="green">
-        <Award className="mr-1" size={13} />
-        Awarded
+      <StatusPill tone="amber">
+        <Clock3 className="mr-1" size={13} />
+        Pending
+      </StatusPill>
+    );
+  }
+
+  if (normalizedStatus === "invited") {
+    return (
+      <StatusPill tone="amber">
+        <Clock3 className="mr-1" size={13} />
+        Invited
       </StatusPill>
     );
   }
@@ -205,7 +225,7 @@ export function ApplicationStatusPill({ status }: { status: string }) {
     return (
       <StatusPill tone="red">
         <CircleX className="mr-1" size={13} />
-        {normalizedStatus === "not_awarded" ? "Not awarded" : "Rejected"}
+        {normalizedStatus === "not_awarded" ? "Not awarded" : "Declined"}
       </StatusPill>
     );
   }
