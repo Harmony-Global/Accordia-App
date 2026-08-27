@@ -24,6 +24,26 @@ textarea {
   font: inherit;
 }
 
+select option,
+.accordia-select option {
+  background-color: #ffffff;
+  color: #5e5e5e;
+}
+
+select option:hover,
+select option:focus,
+select option:checked,
+select option:active,
+.accordia-select option:hover,
+.accordia-select option:focus,
+.accordia-select option:checked,
+.accordia-select option:active {
+  background: linear-gradient(#196c88, #196c88);
+  background-color: #196c88;
+  box-shadow: 0 0 0 9999px #196c88 inset;
+  color: #ffffff;
+}
+
 .font-editorial {
   font-family: Georgia, "Times New Roman", serif;
   font-style: italic;

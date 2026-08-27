@@ -65,6 +65,10 @@ export type Verification = {
   created_at?: string;
 };
 
+export type JobApplicationSummary = Pick<Application, "id" | "job_id" | "professional_id" | "status" | "chat_invited_at" | "proposed_rate" | "created_at" | "updated_at"> & {
+  professional?: Application["professional"];
+};
+
 export type Job = {
   id: string;
   title: string;
@@ -73,12 +77,38 @@ export type Job = {
   location: string | null;
   state: string | null;
   is_remote: boolean;
+  number_of_professionals: number;
   status: string;
   views_count: number;
   applications_count: number;
+  applications?: JobApplicationSummary[];
+  rejected_applications?: JobApplicationSummary[];
   categories?: Category;
   category?: Category;
   client?: Pick<Profile, "id" | "first_name" | "last_name" | "phone_verified">;
+  created_at: string;
+  updated_at?: string;
+};
+
+export type ProposalAttachment = {
+  id: string;
+  name: string;
+  type: string;
+  size: number;
+  path: string;
+  bucket: string;
+  created_at: string;
+};
+
+export type DeliverableAttachment = ProposalAttachment;
+
+export type ConversationReview = {
+  id: string;
+  rating: number | null;
+  review_text: string | null;
+  skipped: boolean;
+  created_at: string;
+  updated_at: string;
 };
 
 export type Application = {
@@ -87,7 +117,11 @@ export type Application = {
   professional_id: string;
   pitch: string;
   proposed_rate: number | null;
+  estimated_days: number | null;
   reference_image_urls: string[];
+  proposal_attachments: ProposalAttachment[];
+  chat_invited_at?: string | null;
+  chat_invited_by?: string | null;
   status: "pending" | "reviewed" | "shortlisted" | "selected" | "awarded" | "not_awarded" | "rejected" | string;
   created_at: string;
   updated_at: string;
@@ -124,10 +158,21 @@ export type JobConversation = {
   professional_id: string;
   opened_by: string | null;
   status: "open" | "archived" | string;
+  upfront_payment_made_at?: string | null;
+  upfront_payment_made_by?: string | null;
+  work_status?: "in_progress" | "submitted" | "revision_requested" | "completed" | string;
+  work_submitted_at?: string | null;
+  revision_requested_at?: string | null;
+  completed_at?: string | null;
+  final_payment_made_at?: string | null;
+  final_payment_made_by?: string | null;
+  deliverables?: DeliverableAttachment[];
+  revision_note?: string | null;
+  review?: ConversationReview | ConversationReview[] | null;
   created_at: string;
   updated_at: string;
-  job?: Pick<Job, "id" | "title" | "status" | "category"> | null;
-  application?: Pick<Application, "id" | "status" | "pitch" | "reference_image_urls"> | null;
+  job?: Pick<Job, "id" | "title" | "status" | "category" | "is_remote" | "description" | "number_of_professionals" | "location" | "state"> | null;
+  application?: Pick<Application, "id" | "status" | "pitch" | "proposed_rate" | "estimated_days" | "reference_image_urls" | "proposal_attachments"> | null;
   client?: Pick<Profile, "id" | "first_name" | "last_name" | "avatar_url" | "phone_verified"> | null;
   professional?: Pick<Profile, "id" | "first_name" | "last_name" | "avatar_url" | "phone_verified"> & {
     professional_profiles?: ProfessionalProfile | ProfessionalProfile[] | null;
@@ -151,6 +196,8 @@ export type ChatMessage = {
 
 export type ProfessionalSearchResult = ProfessionalProfile & {
   profile?: Pick<Profile, "id" | "first_name" | "last_name" | "avatar_url" | "phone_verified"> | null;
+  rating_average?: number | null;
+  review_count?: number;
 };
 
 export type ProfessionalInquiry = {
@@ -180,6 +227,23 @@ export type AppointmentAvailability = {
   service?: ProfessionalService | null;
 };
 
+export type AppointmentRescheduleRequest = {
+  id: string;
+  appointment_id: string;
+  requested_by: string;
+  requested_for: string;
+  previous_starts_at: string;
+  previous_ends_at: string;
+  proposed_starts_at: string;
+  proposed_ends_at: string;
+  note: string | null;
+  status: "pending" | "accepted" | "declined" | string;
+  responded_by: string | null;
+  responded_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
 export type Appointment = {
   id: string;
   client_id: string;
@@ -199,5 +263,6 @@ export type Appointment = {
   };
   service?: ProfessionalService | null;
   availability?: AppointmentAvailability | null;
+  reschedule_requests?: AppointmentRescheduleRequest[];
 };
 

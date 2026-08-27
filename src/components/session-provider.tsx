@@ -1,7 +1,7 @@
 "use client";
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
-import { clearSession, getRole, getToken, saveSession } from "@/lib/session";
+import { clearSession, getCachedProfile, getRole, getToken, saveCachedProfile, saveSession } from "@/lib/session";
 import { isSessionExpiredError } from "@/services/http";
 import { getMyProfile } from "@/services/profile-service";
 import type { Profile } from "@/types";
@@ -15,7 +15,7 @@ type SessionContextValue = {
   ready: boolean;
   sessionExpired: boolean;
   refreshProfile: () => Promise<void>;
-  setSession: (accessToken: string, role: string, profile?: Profile | null) => void;
+  setSession: (accessToken: string, role: string, appSessionId: string, profile?: Profile | null) => void;
   updateProfile: (profile: Partial<Profile>) => void;
   clear: () => void;
 };
@@ -46,9 +46,11 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     const storedToken = getToken();
+    const cachedProfile = getCachedProfile();
     setToken(storedToken);
     setRole(getRole());
-    setProfileLoading(Boolean(storedToken));
+    setProfile(cachedProfile);
+    setProfileLoading(Boolean(storedToken && !cachedProfile));
     setReady(true);
   }, []);
 
@@ -70,6 +72,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
       const data = await getMyProfile(token);
       setProfile(data.profile);
       setRole(data.profile.role);
+      saveCachedProfile(data.profile);
       setSessionExpired(false);
     } catch (err) {
       if (isSessionExpiredError(err)) {
@@ -86,20 +89,26 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     void refreshProfile();
   }, [refreshProfile]);
 
-  const setSession = useCallback((accessToken: string, nextRole: string, nextProfile?: Profile | null) => {
-    saveSession(accessToken, nextRole);
+  const setSession = useCallback((accessToken: string, nextRole: string, appSessionId: string, nextProfile?: Profile | null) => {
+    saveSession(accessToken, nextRole, appSessionId);
     setToken(accessToken);
     setRole(nextRole);
     setProfileError("");
     setSessionExpired(false);
     if (nextProfile !== undefined) {
       setProfile(nextProfile);
+      saveCachedProfile(nextProfile);
       setProfileLoading(false);
     }
   }, []);
 
   const updateProfile = useCallback((patch: Partial<Profile>) => {
-    setProfile((current) => current ? { ...current, ...patch } : current);
+    setProfile((current) => {
+      if (!current) return current;
+      const nextProfile = { ...current, ...patch };
+      saveCachedProfile(nextProfile);
+      return nextProfile;
+    });
   }, []);
 
   const clear = useCallback(() => {

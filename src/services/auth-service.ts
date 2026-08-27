@@ -20,10 +20,12 @@ export type RegisterPayload = LoginPayload & {
 export type LoginResponse = {
   session: AuthSession;
   profile: Profile;
+  app_session_id: string;
 };
 
 export type RegisterResponse = {
   session: AuthSession | null;
+  app_session_id: string | null;
   user: {
     id: string;
     email: string;
@@ -42,6 +44,7 @@ export type OAuthProfilePayload = {
 export type OAuthProfileResponse = {
   profile?: Profile;
   needs_profile: boolean;
+  app_session_id?: string | null;
   required?: string[];
   user?: {
     email: string;

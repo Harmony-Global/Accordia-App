@@ -1,10 +1,11 @@
-import { apiFetch } from "@/services/http";
-import type { Application, Job, JobView } from "@/types";
+import { apiFetch, apiFormData } from "@/services/http";
+import type { Application, Job, JobConversation, JobView, ProposalAttachment } from "@/types";
 
 export type CreateJobPayload = {
   title: string;
   description: string;
   category_id: string;
+  number_of_professionals: number;
   location: string;
   state: string;
   is_remote: boolean;
@@ -43,6 +44,7 @@ export function applyToJob(
   jobId: string,
   pitch: string,
   proposedRate?: number | null,
+  estimatedDays?: number | null,
   referenceImageUrls: string[] = []
 ) {
   return apiFetch<{ application_id: string }>(`/api/jobs/${jobId}/apply`, {
@@ -51,6 +53,7 @@ export function applyToJob(
     body: {
       pitch,
       proposed_rate: proposedRate ?? null,
+      estimated_days: estimatedDays ?? null,
       reference_image_urls: referenceImageUrls
     }
   });
@@ -62,6 +65,7 @@ export function updateApplication(
   payload: {
     pitch?: string;
     proposed_rate?: number | null;
+    estimated_days?: number | null;
     reference_image_urls?: string[];
   }
 ) {
@@ -72,24 +76,34 @@ export function updateApplication(
   });
 }
 
-export function awardApplication(token: string, applicationId: string) {
-  return apiFetch<{ application: Application }>(`/api/applications/${applicationId}/award`, {
+export function uploadApplicationAttachment(token: string, applicationId: string, file: File) {
+  const formData = new FormData();
+  formData.append("file", file);
+
+  return apiFormData<{ attachment: ProposalAttachment; attachments: ProposalAttachment[] }>(`/api/applications/${applicationId}/attachments`, formData, token);
+}
+
+export function getApplicationAttachmentAccess(token: string, applicationId: string, attachmentId: string) {
+  return apiFetch<{ attachment: ProposalAttachment; signed_url: string; expires_in: number }>(`/api/applications/${applicationId}/attachments/${attachmentId}`, { token, cacheTtlMs: 0 });
+}
+
+export function deleteApplicationAttachment(token: string, applicationId: string, attachmentId: string) {
+  return apiFetch<{ attachment_id: string; attachments: ProposalAttachment[] }>(`/api/applications/${applicationId}/attachments/${attachmentId}`, {
+    token,
+    method: "DELETE"
+  });
+}
+
+export function inviteApplicationToChat(token: string, applicationId: string) {
+  return apiFetch<{ invitation: { application_id: string; conversation_id: string; already_invited: boolean } }>(`/api/applications/${applicationId}/invite-chat`, {
     token,
     method: "POST",
     body: {}
   });
 }
 
-export function undoAwardApplication(token: string, applicationId: string) {
-  return apiFetch<{ application: Application }>(`/api/applications/${applicationId}/undo-award`, {
-    token,
-    method: "POST",
-    body: {}
-  });
-}
-
-export function sealJobAwards(token: string, jobId: string) {
-  return apiFetch<{ job_id: string; awarded_application_ids: string[]; conversation_ids: string[] }>(`/api/jobs/${jobId}/awards/seal`, {
+export function declineApplication(token: string, applicationId: string) {
+  return apiFetch<{ decline: { application_id: string; previous_status: string; next_status: string } }>(`/api/applications/${applicationId}/decline`, {
     token,
     method: "POST",
     body: {}

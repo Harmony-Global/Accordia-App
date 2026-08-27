@@ -5,33 +5,45 @@ import { useRequireAuth } from "@/hooks/use-auth";
 import { getConversations } from "@/services/conversation-service";
 import {
   applyToJob,
-  awardApplication,
   createJob,
+  declineApplication,
   getClientJobs,
   getJobApplications,
   getJobViews,
   getMatchedJobs,
   getMyApplications,
-  sealJobAwards,
-  undoAwardApplication,
+  inviteApplicationToChat,
   updateApplication,
   type CreateJobPayload
 } from "@/services/job-service";
 import type { Application, Job, JobConversation, JobView } from "@/types";
 
+let cachedClientJobs: Job[] = [];
+let cachedMatchedJobs: Job[] = [];
+let cachedMyApplications: Application[] = [];
+
 export function useClientJobs() {
   const token = useRequireAuth();
-  const [jobs, setJobs] = useState<Job[]>([]);
+  const [jobs, setJobs] = useState<Job[]>(cachedClientJobs);
   const [error, setError] = useState("");
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(cachedClientJobs.length === 0);
+  const [refreshing, setRefreshing] = useState(false);
 
   const refresh = useCallback(() => {
     if (!token) return;
-    setLoading(true);
+    if (cachedClientJobs.length === 0) setLoading(true);
+    setRefreshing(true);
+    setError("");
     getClientJobs(token)
-      .then((data) => setJobs(data.jobs))
+      .then((data) => {
+        cachedClientJobs = data.jobs;
+        setJobs(data.jobs);
+      })
       .catch((err) => setError(err instanceof Error ? err.message : "Could not load jobs"))
-      .finally(() => setLoading(false));
+      .finally(() => {
+        setLoading(false);
+        setRefreshing(false);
+      });
   }, [token]);
 
   useEffect(() => refresh(), [refresh]);
@@ -41,29 +53,32 @@ export function useClientJobs() {
     return createJob(token, payload);
   }
 
-  return { jobs, error, loading, refresh, publishJob };
+  return { jobs, error, loading, refreshing, refresh, publishJob };
 }
 
 export function useMatchedJobs() {
   const token = useRequireAuth();
-  const [jobs, setJobs] = useState<Job[]>([]);
+  const [jobs, setJobs] = useState<Job[]>(cachedMatchedJobs);
   const [error, setError] = useState("");
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(cachedMatchedJobs.length === 0);
 
   const refresh = useCallback(() => {
     if (!token) return;
-    setLoading(true);
+    if (cachedMatchedJobs.length === 0) setLoading(true);
     getMatchedJobs(token)
-      .then((data) => setJobs(data.jobs))
+      .then((data) => {
+        cachedMatchedJobs = data.jobs;
+        setJobs(data.jobs);
+      })
       .catch((err) => setError(err instanceof Error ? err.message : "Could not load matched jobs"))
       .finally(() => setLoading(false));
   }, [token]);
 
   useEffect(() => refresh(), [refresh]);
 
-  async function apply(jobId: string, pitch: string, proposedRate?: number | null, referenceImageUrls: string[] = []) {
+  async function apply(jobId: string, pitch: string, proposedRate?: number | null, estimatedDays?: number | null, referenceImageUrls: string[] = []) {
     if (!token) throw new Error("You need to log in again");
-    return applyToJob(token, jobId, pitch, proposedRate, referenceImageUrls);
+    return applyToJob(token, jobId, pitch, proposedRate, estimatedDays, referenceImageUrls);
   }
 
   return { jobs, error, loading, refresh, apply };
@@ -71,25 +86,32 @@ export function useMatchedJobs() {
 
 export function useMyApplications() {
   const token = useRequireAuth();
-  const [applications, setApplications] = useState<Application[]>([]);
+  const [applications, setApplications] = useState<Application[]>(cachedMyApplications);
   const [error, setError] = useState("");
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(cachedMyApplications.length === 0);
 
   const refresh = useCallback(() => {
     if (!token) return;
-    setLoading(true);
+    if (cachedMyApplications.length === 0) setLoading(true);
     getMyApplications(token)
-      .then((data) => setApplications(data.applications))
+      .then((data) => {
+        cachedMyApplications = data.applications;
+        setApplications(data.applications);
+      })
       .catch((err) => setError(err instanceof Error ? err.message : "Could not load applications"))
       .finally(() => setLoading(false));
   }, [token]);
 
   useEffect(() => refresh(), [refresh]);
 
-  async function saveApplication(applicationId: string, payload: { pitch?: string; proposed_rate?: number | null; reference_image_urls?: string[] }) {
+  async function saveApplication(applicationId: string, payload: { pitch?: string; proposed_rate?: number | null; estimated_days?: number | null; reference_image_urls?: string[] }) {
     if (!token) throw new Error("You need to log in again");
     const data = await updateApplication(token, applicationId, payload);
-    setApplications((current) => current.map((item) => item.id === applicationId ? data.application : item));
+    setApplications((current) => {
+      const nextApplications = current.map((item) => item.id === applicationId ? data.application : item);
+      cachedMyApplications = nextApplications;
+      return nextApplications;
+    });
     return data.application;
   }
 
@@ -120,27 +142,25 @@ export function useJobEngagement(jobId: string | null) {
 
   useEffect(() => refresh(), [refresh]);
 
-  async function award(applicationId: string) {
-    if (!token) throw new Error("You need to log in again");
-    const data = await awardApplication(token, applicationId);
-    setApplications((current) => current.map((item) => item.id === applicationId ? { ...item, ...data.application } : item));
-    return data;
-  }
-
-  async function undoAward(applicationId: string) {
-    if (!token) throw new Error("You need to log in again");
-    const data = await undoAwardApplication(token, applicationId);
-    setApplications((current) => current.map((item) => item.id === applicationId ? { ...item, ...data.application } : item));
-    return data;
-  }
-
-  async function sealAwards() {
+  async function inviteToChat(applicationId: string) {
     if (!token || !jobId) throw new Error("Select a job first");
-    const data = await sealJobAwards(token, jobId);
-    const conversationData = await getConversations(token, jobId);
+    const data = await inviteApplicationToChat(token, applicationId);
+    const [applicationData, conversationData] = await Promise.all([
+      getJobApplications(token, jobId),
+      getConversations(token, jobId)
+    ]);
+    setApplications(applicationData.applications);
     setConversations(conversationData.conversations);
     return data;
   }
 
-  return { applications, conversations, views, error, loading, refresh, award, undoAward, sealAwards };
+  async function decline(applicationId: string) {
+    if (!token || !jobId) throw new Error("Select a job first");
+    const data = await declineApplication(token, applicationId);
+    setApplications((current) => current.map((item) => item.id === applicationId ? { ...item, status: "rejected" } : item));
+    setConversations((current) => current.filter((item) => item.application_id !== applicationId));
+    return data;
+  }
+
+  return { applications, conversations, views, error, loading, refresh, inviteToChat, decline };
 }

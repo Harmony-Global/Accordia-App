@@ -38,7 +38,7 @@ function ServiceCard({
   return (
     <article className="overflow-hidden rounded-lg border border-line bg-white shadow-sm">
       <div className="relative aspect-[16/9] bg-slate-100">
-        <img alt={service.title} className="h-full w-full object-cover" src={service.image_url} />
+        <img alt={service.title} className="h-full w-full object-cover" decoding="async" loading="lazy" src={service.image_url} />
         <span className="absolute left-3 top-3">
           <StatusPill tone={service.is_active ? "green" : "gray"}>{service.is_active ? "Active" : "Hidden"}</StatusPill>
         </span>
@@ -373,7 +373,7 @@ export default function ProfilePage() {
             <div className="mt-6 flex flex-wrap items-center gap-5 rounded-lg border border-line bg-slate-50 p-4">
               <div className="grid h-20 w-20 place-items-center overflow-hidden rounded-full bg-white text-lg font-bold text-brand shadow-sm">
                 {avatarPreview ? (
-                  <img alt={`${profile.first_name} ${profile.last_name}`} className="h-full w-full object-cover" src={avatarPreview} />
+                  <img alt={`${profile.first_name} ${profile.last_name}`} className="h-full w-full object-cover" decoding="async" src={avatarPreview} />
                 ) : (
                   <UserRound size={28} />
                 )}
