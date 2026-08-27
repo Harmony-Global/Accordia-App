@@ -1,5 +1,5 @@
 import { apiFetch } from "@/services/http";
-import type { Appointment, AppointmentAvailability } from "@/types";
+import type { Appointment, AppointmentAvailability, AppointmentRescheduleRequest, ChatMessage, ProfessionalInquiry } from "@/types";
 
 export function getAvailability(token: string, professionalId?: string) {
   const params = new URLSearchParams();
@@ -57,6 +57,43 @@ export function updateAppointmentStatus(
   status: "accepted" | "declined" | "cancelled" | "completed"
 ) {
   return apiFetch<{ appointment: Appointment }>(`/api/appointments/${appointmentId}/status`, {
+    token,
+    method: "PATCH",
+    body: { status }
+  });
+}
+
+export function openAppointmentChat(token: string, appointmentId: string) {
+  return apiFetch<{ inquiry: ProfessionalInquiry }>(`/api/appointments/${appointmentId}/chat`, {
+    token,
+    method: "POST",
+    body: {}
+  });
+}
+
+export function requestAppointmentReschedule(
+  token: string,
+  appointmentId: string,
+  payload: {
+    starts_at: string;
+    ends_at: string;
+    note?: string | null;
+  }
+) {
+  return apiFetch<{ appointment: Appointment; reschedule_request: AppointmentRescheduleRequest; message: ChatMessage }>(`/api/appointments/${appointmentId}/reschedule`, {
+    token,
+    method: "POST",
+    body: payload
+  });
+}
+
+export function respondAppointmentReschedule(
+  token: string,
+  appointmentId: string,
+  requestId: string,
+  status: "accepted" | "declined"
+) {
+  return apiFetch<{ appointment: Appointment; reschedule_request: AppointmentRescheduleRequest; message: ChatMessage | null }>(`/api/appointments/${appointmentId}/reschedule/${requestId}`, {
     token,
     method: "PATCH",
     body: { status }

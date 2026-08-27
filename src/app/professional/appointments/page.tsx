@@ -1,8 +1,9 @@
 "use client";
 
-import { CalendarDays, CheckCircle2, Clock3, Trash2, UserRound, XCircle } from "lucide-react";
+import { CalendarDays, CheckCircle2, Clock3, MessageSquareText, Trash2, UserRound, XCircle } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { AppShell, EmptyState } from "@/components/app-shell";
+import { ChatModal } from "@/components/chat-modal";
 import { Button, Card, PageLoader, SelectField, Spinner, StatusPill, TextAreaField, TextField } from "@/components/ui";
 import { useToast } from "@/components/toast";
 import { useProfile } from "@/hooks/use-auth";
@@ -11,9 +12,10 @@ import {
   deleteAvailability,
   getAppointments,
   getAvailability,
+  openAppointmentChat,
   updateAppointmentStatus
 } from "@/services/appointment-service";
-import type { Appointment, AppointmentAvailability, ProfessionalProfile, ProfessionalService } from "@/types";
+import type { Appointment, AppointmentAvailability, ProfessionalInquiry, ProfessionalProfile, ProfessionalService } from "@/types";
 
 function getProfessionalProfile(profile: ReturnType<typeof useProfile>["profile"]): ProfessionalProfile | null {
   if (!profile?.professional_profiles) return null;
@@ -55,6 +57,8 @@ export default function ProfessionalAppointmentsPage() {
   const [pageLoading, setPageLoading] = useState(true);
   const [savingSlot, setSavingSlot] = useState(false);
   const [busyId, setBusyId] = useState("");
+  const [chatInquiry, setChatInquiry] = useState<ProfessionalInquiry | null>(null);
+  const [chatAppointment, setChatAppointment] = useState<Appointment | null>(null);
 
   async function loadData() {
     if (!token) return;
@@ -144,6 +148,22 @@ export default function ProfessionalAppointmentsPage() {
     }
   }
 
+  async function openChat(appointment: Appointment) {
+    if (!token) return;
+    setBusyId(appointment.id);
+    try {
+      const data = await openAppointmentChat(token, appointment.id);
+      setChatInquiry(data.inquiry);
+      setChatAppointment(appointment);
+      setAppointments((current) => current.map((item) => item.id === appointment.id ? { ...item, inquiry_id: data.inquiry.id } : item));
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Could not open appointment chat";
+      showToast({ tone: "error", title: "Chat unavailable", body: message });
+    } finally {
+      setBusyId("");
+    }
+  }
+
   if (loading || pageLoading) {
     return (
       <AppShell>
@@ -213,9 +233,14 @@ export default function ProfessionalAppointmentsPage() {
                       </>
                     ) : null}
                     {appointment.status === "accepted" ? (
-                      <Button disabled={busyId === appointment.id} onClick={() => changeAppointmentStatus(appointment, "completed")} type="button" variant="secondary">
-                        <CheckCircle2 size={17} /> Mark completed
-                      </Button>
+                      <>
+                        <Button disabled={busyId === appointment.id} onClick={() => openChat(appointment)} type="button">
+                          {busyId === appointment.id ? <Spinner className="h-5 w-5" /> : <><MessageSquareText size={17} /> Chat</>}
+                        </Button>
+                        <Button disabled={busyId === appointment.id} onClick={() => changeAppointmentStatus(appointment, "completed")} type="button" variant="secondary">
+                          <CheckCircle2 size={17} /> Mark completed
+                        </Button>
+                      </>
                     ) : null}
                   </div>
                 </article>
@@ -267,6 +292,21 @@ export default function ProfessionalAppointmentsPage() {
           </Card>
         </aside>
       </div>
+      {chatInquiry ? (
+        <ChatModal
+          appointment={chatAppointment}
+          conversation={chatInquiry}
+          kind="inquiry"
+          onAppointmentUpdated={(updatedAppointment) => {
+            setChatAppointment(updatedAppointment);
+            setAppointments((current) => current.map((item) => item.id === updatedAppointment.id ? updatedAppointment : item));
+          }}
+          onClose={() => {
+            setChatInquiry(null);
+            setChatAppointment(null);
+          }}
+        />
+      ) : null}
     </AppShell>
   );
 }
