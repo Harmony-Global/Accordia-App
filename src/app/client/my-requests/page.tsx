@@ -1,20 +1,22 @@
 "use client";
 
 import { useSearchParams } from "next/navigation";
-import { Suspense, useEffect, useState } from "react";
-import { BriefcaseBusiness, CheckCircle2, ChevronDown, Clock3, Download, Eye, File, FileImage, FileSpreadsheet, FileText, MapPin, MessagesSquare, MoreHorizontal, RefreshCw, ShieldCheck, Star, UserRound, X, type LucideIcon } from "lucide-react";
+import { Suspense, useCallback, useEffect, useState } from "react";
+import { BriefcaseBusiness, CheckCircle2, ChevronDown, Clock3, Download, Eye, File, FileImage, FileSpreadsheet, FileText, MapPin, MessagesSquare, RefreshCw, ShieldCheck, Star, X, type LucideIcon } from "lucide-react";
 import { AppShell, EmptyState } from "@/components/app-shell";
 import { ChatModal } from "@/components/chat-modal";
-import { ApplicationStatusPill, Button, IconButton, PageLoader, Spinner, StatusPill, TextAreaField } from "@/components/ui";
+import { ApplicationStatusPill, Button, IconButton, MoreButton, PageLoader, ProfileAvatar, Spinner, StatusPill, TextAreaField } from "@/components/ui";
 import { useToast } from "@/components/toast";
 import { useRequireAuth } from "@/hooks/use-auth";
 import { useConversations } from "@/hooks/use-conversations";
 import { useClientJobs, useJobEngagement } from "@/hooks/use-jobs";
 import { confirmConversationCompletion, getConversationDeliverableAccess, makeConversationFinalPayment, requestConversationRevision, reviewConversationProfessional } from "@/services/conversation-service";
 import { getApplicationAttachmentAccess, getJobApplications } from "@/services/job-service";
-import type { Application, ConversationReview, Job, JobApplicationSummary, JobConversation, ProfessionalProfile, ProfessionalService, ProposalAttachment } from "@/types";
+import { getNotifications, markNotificationRead } from "@/services/notification-service";
+import type { Application, ConversationReview, Job, JobApplicationSummary, JobConversation, Notification, ProfessionalProfile, ProfessionalService, ProposalAttachment } from "@/types";
 
 type RequestFilter = "all" | "active" | "completed" | "rejected";
+type RequestTabSeenAt = Record<RequestFilter, number>;
 
 const requestFilterLabels: Record<RequestFilter, string> = {
   all: "My Request / Applications",
@@ -23,12 +25,16 @@ const requestFilterLabels: Record<RequestFilter, string> = {
   rejected: "Rejected"
 };
 
+const requestTabSeenStorageKey = "accordia:client-request-tab-seen-at";
+const initialRequestTabSeenAt: RequestTabSeenAt = {
+  all: 0,
+  active: 0,
+  completed: 0,
+  rejected: 0
+};
+
 function PersonAvatar({ avatarUrl }: { avatarUrl?: string | null }) {
-  return (
-    <span className="grid h-10 w-10 place-items-center overflow-hidden rounded-full bg-slate-100 text-brand">
-      {avatarUrl ? <img alt="" className="h-full w-full object-cover" decoding="async" src={avatarUrl} /> : <UserRound size={18} />}
-    </span>
-  );
+  return <ProfileAvatar avatarUrl={avatarUrl} />;
 }
 
 function RequestCategoryPill({ children }: { children: React.ReactNode }) {
@@ -637,6 +643,80 @@ function activeStartedDate(conversation: JobConversation) {
   return conversation.upfront_payment_made_at ?? conversation.updated_at ?? conversation.created_at;
 }
 
+function timestampValue(value?: string | null) {
+  if (!value) return 0;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? 0 : date.getTime();
+}
+
+function latestConversationActivityAt(conversation: JobConversation) {
+  return Math.max(
+    timestampValue(conversation.completed_at),
+    timestampValue(conversation.revision_requested_at),
+    timestampValue(conversation.work_submitted_at),
+    timestampValue(conversation.final_payment_made_at),
+    timestampValue(conversation.upfront_payment_made_at),
+    timestampValue(conversation.updated_at),
+    timestampValue(conversation.created_at)
+  );
+}
+
+function latestRejectedApplicationActivityAt(application: Application) {
+  return Math.max(timestampValue(application.updated_at), timestampValue(application.created_at));
+}
+
+function latestJobActivityAt(job: Job) {
+  const applicationActivity = (job.applications ?? []).reduce((latest, application) => Math.max(latest, timestampValue(application.updated_at), timestampValue(application.created_at)), 0);
+  return Math.max(applicationActivity, timestampValue(job.updated_at), timestampValue(job.created_at));
+}
+
+function sortByLatestActivity<T>(items: T[], getActivityAt: (item: T) => number) {
+  return [...items].sort((first, second) => getActivityAt(second) - getActivityAt(first));
+}
+
+function requestNotificationTab(notification: Notification): RequestFilter | null {
+  const hasRequestTarget = typeof notification.data?.job_id === "string" || typeof notification.data?.application_id === "string" || typeof notification.data?.conversation_id === "string";
+  if (!hasRequestTarget) return null;
+
+  switch (notification.type) {
+    case "application_received":
+      return "all";
+    case "professional_hired":
+    case "work_submitted":
+    case "final_payment_made":
+    case "revision_requested":
+    case "conversation_message":
+      return "active";
+    case "job_completed":
+      return "completed";
+    case "application_rejected":
+      return "rejected";
+    default:
+      return null;
+  }
+}
+
+function loadRequestTabSeenAt(): RequestTabSeenAt {
+  if (typeof window === "undefined") return initialRequestTabSeenAt;
+
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(requestTabSeenStorageKey) ?? "{}") as Partial<RequestTabSeenAt>;
+    return {
+      all: Number(parsed.all) || 0,
+      active: Number(parsed.active) || 0,
+      completed: Number(parsed.completed) || 0,
+      rejected: Number(parsed.rejected) || 0
+    };
+  } catch {
+    return initialRequestTabSeenAt;
+  }
+}
+
+function saveRequestTabSeenAt(value: RequestTabSeenAt) {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(requestTabSeenStorageKey, JSON.stringify(value));
+}
+
 function expectedCompletionDate(conversation: JobConversation) {
   const startedAt = activeStartedDate(conversation);
   const days = conversation.application?.estimated_days;
@@ -1134,9 +1214,7 @@ function ActiveEngagementCard({
             Rated
           </span>
         ) : null}
-        <IconButton aria-label="More active job actions" className="h-11 w-9 rounded-[2px]" type="button" variant="secondary">
-          <MoreHorizontal size={16} />
-        </IconButton>
+        <MoreButton aria-label="More active job actions" />
       </div>
 
       <section className="mt-7 grid gap-8 rounded-[8px] border border-[#b8d1da] p-4 sm:p-6 lg:grid-cols-2">
@@ -1485,9 +1563,7 @@ function ApplicationRow({
               View Profile
             </Button>
             <div className="relative">
-              <IconButton aria-label="More applicant actions" className="h-11 w-9 rounded-[2px]" onClick={() => setMoreOpen(true)} type="button" variant="secondary">
-                <MoreHorizontal size={16} />
-              </IconButton>
+              <MoreButton aria-label="More applicant actions" onClick={() => setMoreOpen(true)} />
               {moreOpen ? (
                 <>
                   <button aria-label="Close applicant actions" className="fixed inset-0 z-[71] cursor-default bg-transparent" onClick={() => setMoreOpen(false)} type="button" />
@@ -1708,32 +1784,98 @@ function ClientJobsContent() {
   const [activeFilter, setActiveFilter] = useState<RequestFilter>("all");
   const [profileApplication, setProfileApplication] = useState<Application | null>(null);
   const [chatConversation, setChatConversation] = useState<JobConversation | null>(null);
+  const [openedConversationId, setOpenedConversationId] = useState("");
   const [hydratedRejectedApplicationsByJob, setHydratedRejectedApplicationsByJob] = useState<Record<string, Application[]>>({});
   const [rejectedLoading, setRejectedLoading] = useState(false);
+  const [requestNotifications, setRequestNotifications] = useState<Notification[]>([]);
+  const [requestTabSeenAt, setRequestTabSeenAt] = useState<RequestTabSeenAt>(initialRequestTabSeenAt);
   const jobIdParam = searchParams.get("job_id");
   const conversationIdParam = searchParams.get("conversation_id");
-  const activeConversations = conversations.filter((conversation) => Boolean(conversation.upfront_payment_made_at) && !isCompletedConversation(conversation));
-  const completedConversations = conversations.filter((conversation) => Boolean(conversation.upfront_payment_made_at) && isCompletedConversation(conversation));
-  const rejectedApplications = jobs.flatMap((job) =>
-    (hydratedRejectedApplicationsByJob[job.id] ?? rejectedApplicationSummaries(job))
-      .map((application) => ({ application, job }))
+  const activeConversations = sortByLatestActivity(
+    conversations.filter((conversation) => Boolean(conversation.upfront_payment_made_at) && !isCompletedConversation(conversation)),
+    latestConversationActivityAt
   );
+  const completedConversations = sortByLatestActivity(
+    conversations.filter((conversation) => Boolean(conversation.upfront_payment_made_at) && isCompletedConversation(conversation)),
+    latestConversationActivityAt
+  );
+  const rejectedApplications = sortByLatestActivity(
+    jobs.flatMap((job) =>
+      (hydratedRejectedApplicationsByJob[job.id] ?? rejectedApplicationSummaries(job))
+        .map((application) => ({ application, job }))
+    ),
+    (item) => latestRejectedApplicationActivityAt(applicationFromSummary(item.application, item.job))
+  );
+  const sortedJobs = sortByLatestActivity(jobs, latestJobActivityAt);
   const filterCounts = {
     all: jobs.length,
     active: activeConversations.length,
     completed: completedConversations.length,
     rejected: rejectedApplications.length
   };
-  const filteredJobs = jobs.filter((job) => jobMatchesFilter(job, activeFilter));
+  const filteredJobs = sortedJobs.filter((job) => jobMatchesFilter(job, activeFilter));
+  const latestRequestTabActivityAt: RequestTabSeenAt = {
+    all: sortedJobs.reduce((latest, job) => Math.max(latest, latestJobActivityAt(job)), 0),
+    active: activeConversations.reduce((latest, conversation) => Math.max(latest, latestConversationActivityAt(conversation)), 0),
+    completed: completedConversations.reduce((latest, conversation) => Math.max(latest, latestConversationActivityAt(conversation)), 0),
+    rejected: rejectedApplications.reduce((latest, item) => Math.max(latest, latestRejectedApplicationActivityAt(applicationFromSummary(item.application, item.job))), 0)
+  };
+  const requestNotificationDots = requestNotifications.reduce<Record<RequestFilter, boolean>>(
+    (dots, notification) => {
+      const tab = requestNotificationTab(notification);
+      if (tab) dots[tab] = true;
+      return dots;
+    },
+    { all: false, active: false, completed: false, rejected: false }
+  );
+  const requestTabDots: Record<RequestFilter, boolean> = {
+    all: requestNotificationDots.all || (requestTabSeenAt.all > 0 && latestRequestTabActivityAt.all > requestTabSeenAt.all),
+    active: requestNotificationDots.active || (requestTabSeenAt.active > 0 && latestRequestTabActivityAt.active > requestTabSeenAt.active),
+    completed: requestNotificationDots.completed || (requestTabSeenAt.completed > 0 && latestRequestTabActivityAt.completed > requestTabSeenAt.completed),
+    rejected: requestNotificationDots.rejected || (requestTabSeenAt.rejected > 0 && latestRequestTabActivityAt.rejected > requestTabSeenAt.rejected)
+  };
   const filteredItemCount = activeFilter === "active" ? activeConversations.length : activeFilter === "completed" ? completedConversations.length : activeFilter === "rejected" ? rejectedApplications.length : filteredJobs.length;
   const hasFilteredItems = filteredItemCount > 0;
   const requestListFilter = activeFilter === "all";
   const requestsBusy = loading || refreshing || ((activeFilter === "active" || activeFilter === "completed") && conversationsLoading) || (activeFilter === "rejected" && rejectedLoading);
   const selectedJob = jobs.find((job) => job.id === selectedJobId) ?? null;
 
+  const loadRequestNotifications = useCallback(() => {
+    if (!token) return;
+
+    getNotifications(token, true)
+      .then((data) => {
+        setRequestNotifications(data.notifications.filter((notification) => Boolean(requestNotificationTab(notification))));
+      })
+      .catch(() => undefined);
+  }, [token]);
+
+  function markRequestTabSeen(filter: RequestFilter) {
+    const nextSeenAt = {
+      ...requestTabSeenAt,
+      [filter]: Math.max(Date.now(), latestRequestTabActivityAt[filter])
+    };
+    setRequestTabSeenAt(nextSeenAt);
+    saveRequestTabSeenAt(nextSeenAt);
+
+    const notificationsForTab = requestNotifications.filter((notification) => requestNotificationTab(notification) === filter);
+    if (notificationsForTab.length > 0) {
+      setRequestNotifications((current) => current.filter((notification) => requestNotificationTab(notification) !== filter));
+      if (token) {
+        void Promise.allSettled(notificationsForTab.map((notification) => markNotificationRead(token, notification.id, true)));
+      }
+    }
+  }
+
+  function selectRequestFilter(filter: RequestFilter) {
+    setActiveFilter(filter);
+    markRequestTabSeen(filter);
+  }
+
   function refreshAll() {
     refresh();
     refreshConversations();
+    loadRequestNotifications();
   }
 
   function withConversationJob(conversation: JobConversation) {
@@ -1758,10 +1900,38 @@ function ClientJobsContent() {
   }
 
   useEffect(() => {
+    if (!conversationIdParam || openedConversationId === conversationIdParam) return;
+    const conversation = conversations.find((item) => item.id === conversationIdParam);
+    if (!conversation) return;
+
+    setChatConversation(withConversationJob(conversation));
+    setSelectedJobId(conversation.job_id);
+    setOpenedConversationId(conversationIdParam);
+  }, [conversationIdParam, conversations, jobs, openedConversationId]);
+
+  useEffect(() => {
     if (error) {
       showToast({ tone: "error", title: "Could not load jobs", body: error });
     }
   }, [error, showToast]);
+
+  useEffect(() => {
+    setRequestTabSeenAt(loadRequestTabSeenAt());
+  }, []);
+
+  useEffect(() => {
+    if (!token) {
+      setRequestNotifications([]);
+      return;
+    }
+
+    loadRequestNotifications();
+    const timer = window.setInterval(loadRequestNotifications, 30000);
+
+    return () => {
+      window.clearInterval(timer);
+    };
+  }, [loadRequestNotifications, token]);
 
   useEffect(() => {
     if (conversationsError) {
@@ -1864,12 +2034,12 @@ function ClientJobsContent() {
                   aria-current={active ? "page" : undefined}
                   className={`flex min-w-0 px-0 pt-1 text-[13px] font-medium leading-[1.5] transition sm:text-[14px] md:text-[16px] lg:text-[18px] ${filter === "all" ? "justify-start text-left" : filter === "rejected" ? "justify-start text-left sm:justify-end sm:text-right" : "justify-start text-left sm:justify-center sm:text-center"} ${active ? "text-[#196c88]" : "text-[#a4a4a4] hover:text-[#196c88]"}`}
                   key={filter}
-                  onClick={() => setActiveFilter(filter)}
+                  onClick={() => selectRequestFilter(filter)}
                   type="button"
                 >
                   <span className={`relative -mb-[3px] inline-flex max-w-full items-center border-b-4 pb-2 ${active ? "border-[#196c88]" : "border-transparent"}`}>
                     {requestFilterLabels[filter]}({filterCounts[filter]})
-                    {active && filterCounts[filter] > 0 ? <span aria-hidden="true" className="absolute -right-4 -top-1.5 h-2.5 w-2.5 rounded-full bg-[#bf1d1d]" /> : null}
+                    {requestTabDots[filter] && filterCounts[filter] > 0 ? <span aria-hidden="true" className="absolute -right-4 -top-1.5 h-2.5 w-2.5 rounded-full bg-[#bf1d1d]" /> : null}
                   </span>
                 </button>
               );

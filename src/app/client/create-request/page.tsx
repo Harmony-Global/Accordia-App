@@ -5,7 +5,7 @@ import type { FormEvent } from "react";
 import { useEffect, useState } from "react";
 import { Minus, Plus } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
-import { Button, Spinner } from "@/components/ui";
+import { Button, CustomSelect, Spinner } from "@/components/ui";
 import { useToast } from "@/components/toast";
 import { useCategories } from "@/hooks/use-categories";
 import { useRequireAuth } from "@/hooks/use-auth";
@@ -88,8 +88,9 @@ export default function NewJobPage() {
 
           <label className="block text-sm font-medium leading-6 text-[#585858]">
             Category
-            <select
-              className="mt-2 h-12 w-full rounded-[10px] border border-[#d0d0d0] bg-white px-4 text-sm text-ink outline-none transition hover:border-[#a4a4a4] focus:border-brand focus:ring-4 focus:ring-teal-100"
+            <CustomSelect
+              className="mt-2"
+              triggerClassName="h-12 rounded-[10px] border-[#d0d0d0] px-4 text-sm text-ink hover:border-[#a4a4a4]"
               disabled={categoriesLoading || categories.length === 0}
               name="category_id"
               required
@@ -98,7 +99,7 @@ export default function NewJobPage() {
               {categories.map((category) => (
                 <option key={category.id} value={category.id}>{category.name}</option>
               ))}
-            </select>
+            </CustomSelect>
           </label>
 
           <label className="block text-sm font-medium leading-6 text-[#585858]">

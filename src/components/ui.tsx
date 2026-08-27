@@ -1,26 +1,37 @@
+"use client";
+
 import type {
   ButtonHTMLAttributes,
+  ChangeEvent,
   InputHTMLAttributes,
+  ReactElement,
   SelectHTMLAttributes,
   TextareaHTMLAttributes
 } from "react";
-import { CircleX, Clock3 } from "lucide-react";
+import { Children, isValidElement, useEffect, useId, useMemo, useRef, useState } from "react";
+import { Check, ChevronDown, CircleX, Clock3, MoreHorizontal, UserRound } from "lucide-react";
 
 export function Button({
   children,
+  size = "md",
   variant = "primary",
   className = "",
   ...props
-}: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: "primary" | "secondary" | "warning" }) {
+}: ButtonHTMLAttributes<HTMLButtonElement> & { size?: "sm" | "md" | "lg"; variant?: "primary" | "secondary" | "warning" }) {
   const variants = {
     primary: "bg-brand text-white hover:bg-[#125A73]",
     secondary: "border border-line bg-white text-ink hover:bg-slate-50",
     warning: "bg-amber text-white hover:bg-[#D98E13]"
   };
+  const sizes = {
+    sm: "min-h-9 px-3 py-2 text-xs",
+    md: "min-h-11 px-4 py-3 text-sm",
+    lg: "min-h-12 px-5 py-3 text-base"
+  };
 
   return (
     <button
-      className={`inline-flex min-h-11 items-center justify-center rounded-md px-4 py-3 text-sm font-semibold shadow-sm transition duration-200 hover:-translate-y-0.5 hover:shadow-md active:translate-y-0 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0 disabled:hover:shadow-sm ${variants[variant]} ${className}`}
+      className={`inline-flex items-center justify-center rounded-md font-semibold shadow-sm transition duration-200 hover:-translate-y-0.5 hover:shadow-md active:translate-y-0 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0 disabled:hover:shadow-sm ${sizes[size]} ${variants[variant]} ${className}`}
       {...props}
     >
       {children}
@@ -51,6 +62,18 @@ export function IconButton({
   );
 }
 
+export function MoreButton({ className = "", ...props }: ButtonHTMLAttributes<HTMLButtonElement>) {
+  return (
+    <button
+      className={`grid h-11 w-9 shrink-0 place-items-center rounded-[2px] border border-line bg-white text-brand shadow-sm transition duration-200 hover:-translate-y-0.5 hover:border-brand hover:bg-teal-50 hover:shadow-md active:translate-y-0 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0 disabled:hover:shadow-sm ${className}`}
+      type="button"
+      {...props}
+    >
+      <MoreHorizontal size={16} />
+    </button>
+  );
+}
+
 export function TextField({
   label,
   className = "",
@@ -67,6 +90,134 @@ export function TextField({
   );
 }
 
+type CustomSelectOption = {
+  value: string;
+  label: string;
+  disabled?: boolean;
+};
+
+function optionLabel(children: unknown): string {
+  if (typeof children === "string" || typeof children === "number") return String(children);
+  if (Array.isArray(children)) return children.map(optionLabel).join("");
+  return "";
+}
+
+function optionsFromChildren(children: React.ReactNode): CustomSelectOption[] {
+  return Children.toArray(children)
+    .filter(isValidElement)
+    .map((child) => {
+      const option = child as ReactElement<React.OptionHTMLAttributes<HTMLOptionElement>>;
+      return {
+        value: String(option.props.value ?? ""),
+        label: optionLabel(option.props.children),
+        disabled: option.props.disabled
+      };
+    });
+}
+
+export function CustomSelect({
+  children,
+  className = "",
+  triggerClassName = "",
+  menuClassName = "",
+  value,
+  defaultValue,
+  onChange,
+  disabled,
+  name,
+  required,
+  id,
+  "aria-label": ariaLabel
+}: SelectHTMLAttributes<HTMLSelectElement> & {
+  triggerClassName?: string;
+  menuClassName?: string;
+}) {
+  const generatedId = useId();
+  const buttonId = id ?? generatedId;
+  const options = useMemo(() => optionsFromChildren(children), [children]);
+  const firstEnabledOption = options.find((option) => !option.disabled);
+  const isControlled = value !== undefined;
+  const [internalValue, setInternalValue] = useState(String(defaultValue ?? firstEnabledOption?.value ?? ""));
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const selectedValue = String(isControlled ? value : internalValue);
+  const selectedOption = options.find((option) => option.value === selectedValue) ?? firstEnabledOption;
+
+  useEffect(() => {
+    function handlePointerDown(event: PointerEvent) {
+      if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
+    }
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") setOpen(false);
+    }
+
+    document.addEventListener("pointerdown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, []);
+
+  function chooseOption(option: CustomSelectOption) {
+    if (option.disabled || disabled) return;
+    if (!isControlled) setInternalValue(option.value);
+    setOpen(false);
+    onChange?.({
+      target: { value: option.value, name },
+      currentTarget: { value: option.value, name }
+    } as ChangeEvent<HTMLSelectElement>);
+  }
+
+  return (
+    <div className={`relative ${className}`} ref={rootRef}>
+      <input name={name} required={required} type="hidden" value={selectedOption?.value ?? ""} />
+      <button
+        aria-controls={`${buttonId}-menu`}
+        aria-expanded={open}
+        aria-haspopup="listbox"
+        aria-label={ariaLabel}
+        className={`flex w-full items-center justify-between gap-3 rounded-md border border-line bg-white px-3 py-3 text-left text-sm text-ink outline-none transition duration-200 hover:border-slate-300 focus:border-brand focus:ring-4 focus:ring-teal-100 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-muted ${triggerClassName}`}
+        disabled={disabled}
+        id={buttonId}
+        onClick={() => setOpen((current) => !current)}
+        type="button"
+      >
+        <span className={selectedOption?.value ? "truncate" : "truncate text-muted"}>{selectedOption?.label ?? "Select option"}</span>
+        <ChevronDown className={`shrink-0 text-muted transition ${open ? "rotate-180" : ""}`} size={16} />
+      </button>
+      {open ? (
+        <div
+          aria-labelledby={buttonId}
+          className={`absolute left-0 right-0 z-[90] mt-2 max-h-64 overflow-y-auto rounded-md border border-line bg-white py-1 shadow-xl ${menuClassName}`}
+          id={`${buttonId}-menu`}
+          role="listbox"
+        >
+          {options.map((option) => {
+            const selected = option.value === selectedValue;
+            return (
+              <button
+                aria-selected={selected}
+                className={`flex min-h-10 w-full items-center justify-between gap-3 px-3 py-2 text-left text-sm transition ${selected ? "bg-[#196c88] text-white" : "text-[#5e5e5e] hover:bg-[#196c88] hover:text-white"} disabled:cursor-not-allowed disabled:text-slate-300 disabled:hover:bg-white disabled:hover:text-slate-300`}
+                disabled={option.disabled}
+                key={option.value}
+                onClick={() => chooseOption(option)}
+                role="option"
+                type="button"
+              >
+                <span className="truncate">{option.label}</span>
+                {selected ? <Check size={15} /> : null}
+              </button>
+            );
+          })}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 export function SelectField({
   label,
   children,
@@ -76,12 +227,12 @@ export function SelectField({
   return (
     <label className={`block text-sm font-semibold text-ink ${className}`}>
       {label}
-      <select
-        className="mt-2 w-full rounded-md border border-line bg-white px-3 py-3 text-sm outline-none transition duration-200 hover:border-slate-300 focus:border-brand focus:ring-4 focus:ring-teal-100"
+      <CustomSelect
+        className="mt-2"
         {...props}
       >
         {children}
-      </select>
+      </CustomSelect>
     </label>
   );
 }
@@ -162,6 +313,68 @@ export function PageLoader() {
         ))}
       </div>
     </div>
+  );
+}
+
+export function SkeletonBlock({ className = "" }: { className?: string }) {
+  return <div className={`animate-pulse rounded bg-slate-100 shadow-[0_6px_18px_rgba(15,23,42,0.06)] ${className}`} />;
+}
+
+export function SurfaceModal({
+  children,
+  className = "",
+  panelClassName = "",
+  size = "md",
+  labelledBy,
+  onClose
+}: {
+  children: React.ReactNode;
+  className?: string;
+  panelClassName?: string;
+  size?: "sm" | "md" | "lg" | "xl" | "chat";
+  labelledBy?: string;
+  onClose?: () => void;
+}) {
+  const sizes = {
+    sm: "max-w-md",
+    md: "max-w-2xl",
+    lg: "max-w-4xl",
+    xl: "max-w-6xl",
+    chat: "max-w-[860px]"
+  };
+
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }, []);
+
+  return (
+    <div className={`fixed inset-0 z-[80] flex items-start justify-center overflow-y-auto bg-black/20 p-3 backdrop-blur-[2px] sm:p-4 md:p-6 ${className}`}>
+      {onClose ? <button aria-label="Close modal" className="fixed inset-0 z-0 cursor-default bg-transparent" onClick={onClose} type="button" /> : null}
+      <section
+        aria-labelledby={labelledBy}
+        aria-modal="true"
+        className={`relative z-10 mt-2 w-full rounded-[10px] border border-line bg-white shadow-[0_-2px_4px_rgba(0,0,0,0.05),0_10px_30px_rgba(15,23,42,0.14)] sm:mt-4 ${sizes[size]} ${panelClassName}`}
+        role="dialog"
+      >
+        {children}
+      </section>
+    </div>
+  );
+}
+
+export function ProfileAvatar({
+  avatarUrl,
+  className = "",
+  iconSize = 18
+}: {
+  avatarUrl?: string | null;
+  className?: string;
+  iconSize?: number;
+}) {
+  return (
+    <span className={`grid h-10 w-10 shrink-0 place-items-center overflow-hidden rounded-full bg-slate-100 text-brand ${className}`}>
+      {avatarUrl ? <img alt="" className="h-full w-full object-cover" decoding="async" src={avatarUrl} /> : <UserRound size={iconSize} />}
+    </span>
   );
 }
 

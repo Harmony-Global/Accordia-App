@@ -196,6 +196,8 @@ export type ChatMessage = {
 
 export type ProfessionalSearchResult = ProfessionalProfile & {
   profile?: Pick<Profile, "id" | "first_name" | "last_name" | "avatar_url" | "phone_verified"> | null;
+  rating_average?: number | null;
+  review_count?: number;
 };
 
 export type ProfessionalInquiry = {
@@ -225,6 +227,23 @@ export type AppointmentAvailability = {
   service?: ProfessionalService | null;
 };
 
+export type AppointmentRescheduleRequest = {
+  id: string;
+  appointment_id: string;
+  requested_by: string;
+  requested_for: string;
+  previous_starts_at: string;
+  previous_ends_at: string;
+  proposed_starts_at: string;
+  proposed_ends_at: string;
+  note: string | null;
+  status: "pending" | "accepted" | "declined" | string;
+  responded_by: string | null;
+  responded_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
 export type Appointment = {
   id: string;
   client_id: string;
@@ -244,5 +263,6 @@ export type Appointment = {
   };
   service?: ProfessionalService | null;
   availability?: AppointmentAvailability | null;
+  reschedule_requests?: AppointmentRescheduleRequest[];
 };
 

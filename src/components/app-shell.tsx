@@ -108,7 +108,7 @@ export function AppShell({
       return `/professional/jobs?${params.toString()}`;
     }
 
-    if (role === "client" && jobId) {
+    if (role === "client" && (conversationId || jobId)) {
       return withQuery("/client/my-requests", params);
     }
 
