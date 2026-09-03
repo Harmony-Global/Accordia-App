@@ -18,6 +18,17 @@ export function sendConversationMessage(token: string, conversationId: string, b
   });
 }
 
+export function setConversationWorkSchedule(token: string, conversationId: string, startsAt: string, endsAt: string) {
+  return apiFetch<{ conversation: JobConversation; message: ChatMessage }>(`/api/conversations/${conversationId}/schedule`, {
+    token,
+    method: "POST",
+    body: {
+      starts_at: startsAt,
+      ends_at: endsAt
+    }
+  });
+}
+
 export function hireConversationProfessional(token: string, conversationId: string) {
   return apiFetch<{ conversation: JobConversation; application: JobConversation["application"] }>(`/api/conversations/${conversationId}/hire`, {
     token,

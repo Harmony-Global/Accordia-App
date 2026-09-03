@@ -118,10 +118,13 @@ export type Application = {
   pitch: string;
   proposed_rate: number | null;
   estimated_days: number | null;
+  proposed_start_at?: string | null;
   reference_image_urls: string[];
   proposal_attachments: ProposalAttachment[];
   chat_invited_at?: string | null;
   chat_invited_by?: string | null;
+  chat_accepted_at?: string | null;
+  chat_accepted_by?: string | null;
   status: "pending" | "reviewed" | "shortlisted" | "selected" | "awarded" | "not_awarded" | "rejected" | string;
   created_at: string;
   updated_at: string;
@@ -150,6 +153,19 @@ export type Notification = {
   created_at: string;
 };
 
+export type ProposalDraft = {
+  id: string;
+  job_id: string;
+  professional_id: string;
+  pitch: string | null;
+  proposed_rate: number | null;
+  estimated_days: number | null;
+  proposed_start_at: string | null;
+  reference_image_urls: string[];
+  created_at: string;
+  updated_at: string;
+};
+
 export type JobConversation = {
   id: string;
   job_id: string;
@@ -161,6 +177,8 @@ export type JobConversation = {
   upfront_payment_made_at?: string | null;
   upfront_payment_made_by?: string | null;
   work_status?: "in_progress" | "submitted" | "revision_requested" | "completed" | string;
+  work_starts_at?: string | null;
+  work_ends_at?: string | null;
   work_submitted_at?: string | null;
   revision_requested_at?: string | null;
   completed_at?: string | null;

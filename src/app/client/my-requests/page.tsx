@@ -184,7 +184,7 @@ function formatProposalDate(value?: string | null) {
 function proposalState(application: Application, conversation?: JobConversation) {
   const normalizedStatus = application.status.toLowerCase();
 
-  if (normalizedStatus === "rejected" || normalizedStatus === "not_awarded") {
+  if (normalizedStatus === "rejected" || normalizedStatus === "not_awarded" || normalizedStatus === "withdrawn") {
     return { label: "Declined", className: "bg-red-50 text-red-600" };
   }
 
@@ -312,8 +312,9 @@ function ProposalModal({
   const [loadingAttachmentId, setLoadingAttachmentId] = useState("");
   const attachments = application.proposal_attachments ?? [];
   const references = application.reference_image_urls ?? [];
-  const isDeclined = application.status === "rejected" || application.status === "not_awarded";
+  const isDeclined = isDeclinedApplication(application.status);
   const state = proposalState(application, conversation);
+  const hasInvite = Boolean(conversation || application.chat_invited_at);
   const professionalName = `${application.professional?.first_name ?? "Professional"} ${application.professional?.last_name ?? ""}`.trim();
 
   async function getAttachmentUrl(attachment: ProposalAttachment) {
@@ -472,6 +473,10 @@ function ProposalModal({
                 <Button className="h-12 w-full rounded-[5px] px-6 py-0 sm:w-[118px]" onClick={() => onOpenChat(conversation)} type="button">
                   Chat
                 </Button>
+              ) : hasInvite ? (
+                <Button className="h-12 w-full rounded-[5px] px-6 py-0 sm:w-[168px]" disabled type="button" variant="secondary">
+                  Awaiting acceptance
+                </Button>
               ) : (
                 <Button className="h-12 w-full rounded-[5px] px-6 py-0 sm:w-[132px]" disabled={inviting} onClick={() => onInvite(application)} type="button">
                   {inviting ? <Spinner className="h-6 w-6 border-2" /> : "Invite to chat"}
@@ -513,7 +518,7 @@ function ProposalModal({
 }
 
 function isDeclinedApplication(status: string) {
-  return ["rejected", "not_awarded", "declined"].includes(status.toLowerCase());
+  return ["rejected", "not_awarded", "declined", "withdrawn"].includes(status.toLowerCase());
 }
 
 function hiredApplicationCount(applications?: Pick<Application, "status">[]) {
@@ -1475,7 +1480,7 @@ function ApplicationRow({
   const location = [professionalProfile?.location, professionalProfile?.state].filter(Boolean).join(", ");
   const [open, setOpen] = useState(initiallyOpen);
   const [moreOpen, setMoreOpen] = useState(false);
-  const isDeclined = application.status === "rejected" || application.status === "not_awarded";
+  const isDeclined = isDeclinedApplication(application.status);
   const isHired = ["selected", "awarded", "hired", "in_progress", "inprogress"].includes(application.status.toLowerCase());
   const hasInvite = Boolean(conversation || application.chat_invited_at);
   const status = !isDeclined && !isHired && hasInvite ? "invited" : application.status;

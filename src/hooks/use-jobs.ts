@@ -76,9 +76,9 @@ export function useMatchedJobs() {
 
   useEffect(() => refresh(), [refresh]);
 
-  async function apply(jobId: string, pitch: string, proposedRate?: number | null, estimatedDays?: number | null, referenceImageUrls: string[] = []) {
+  async function apply(jobId: string, pitch: string, proposedRate?: number | null, estimatedDays?: number | null, referenceImageUrls: string[] = [], proposedStartAt?: string | null) {
     if (!token) throw new Error("You need to log in again");
-    return applyToJob(token, jobId, pitch, proposedRate, estimatedDays, referenceImageUrls);
+    return applyToJob(token, jobId, pitch, proposedRate, estimatedDays, referenceImageUrls, proposedStartAt);
   }
 
   return { jobs, error, loading, refresh, apply };
