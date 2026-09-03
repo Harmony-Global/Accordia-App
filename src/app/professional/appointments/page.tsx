@@ -4,7 +4,16 @@ import { CalendarDays, CheckCircle2, Clock3, MessageSquareText, Trash2, UserRoun
 import { useEffect, useMemo, useState } from "react";
 import { AppShell, EmptyState } from "@/components/app-shell";
 import { ChatModal } from "@/components/chat-modal";
-import { Button, Card, PageLoader, SelectField, Spinner, StatusPill, TextAreaField, TextField } from "@/components/ui";
+import {
+  ScheduleServiceCalendar,
+  combineDateAndTime,
+  dateOnly,
+  formatDateLabel,
+  formatTimeValue,
+  timePeriodFromDate,
+  type TimePeriod
+} from "@/components/schedule-service-calendar";
+import { Button, Card, PageLoader, SelectField, Spinner, StatusPill, TextAreaField } from "@/components/ui";
 import { useToast } from "@/components/toast";
 import { useProfile } from "@/hooks/use-auth";
 import {
@@ -27,6 +36,11 @@ function formatDateTime(value: string) {
     dateStyle: "medium",
     timeStyle: "short"
   }).format(new Date(value));
+}
+
+function formatSelectedSchedule(date: Date | null, time: string, period: TimePeriod) {
+  if (!date) return "";
+  return `${formatDateLabel(date)}, ${time} ${period.toUpperCase()}`;
 }
 
 function statusTone(status: string): "teal" | "green" | "amber" | "gray" | "red" {
@@ -59,6 +73,15 @@ export default function ProfessionalAppointmentsPage() {
   const [busyId, setBusyId] = useState("");
   const [chatInquiry, setChatInquiry] = useState<ProfessionalInquiry | null>(null);
   const [chatAppointment, setChatAppointment] = useState<Appointment | null>(null);
+  const [slotCalendarOpen, setSlotCalendarOpen] = useState(false);
+  const [slotMode, setSlotMode] = useState<"start" | "end">("start");
+  const [slotMonth, setSlotMonth] = useState(() => dateOnly(new Date()));
+  const [slotStartDate, setSlotStartDate] = useState<Date | null>(null);
+  const [slotEndDate, setSlotEndDate] = useState<Date | null>(null);
+  const [slotStartTime, setSlotStartTime] = useState("8:00");
+  const [slotEndTime, setSlotEndTime] = useState("9:00");
+  const [slotStartPeriod, setSlotStartPeriod] = useState<TimePeriod>("am");
+  const [slotEndPeriod, setSlotEndPeriod] = useState<TimePeriod>("am");
 
   async function loadData() {
     if (!token) return;
@@ -83,16 +106,75 @@ export default function ProfessionalAppointmentsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
 
+  function openSlotCalendar() {
+    if (slotStartDate || slotEndDate) {
+      const visibleDate = slotStartDate ?? slotEndDate ?? new Date();
+      setSlotMode("start");
+      setSlotMonth(new Date(visibleDate.getFullYear(), visibleDate.getMonth(), 1));
+      setSlotCalendarOpen(true);
+      return;
+    }
+
+    const now = new Date();
+    const baseStart = new Date(now);
+    baseStart.setHours(now.getHours() + 1, 0, 0, 0);
+    const baseEnd = new Date(baseStart.getTime() + 60 * 60 * 1000);
+    const nextStartDate = dateOnly(baseStart);
+    const nextEndDate = dateOnly(baseEnd);
+    const nextStartTime = formatTimeValue(baseStart);
+    const nextEndTime = formatTimeValue(baseEnd);
+    const nextStartPeriod = timePeriodFromDate(baseStart);
+    const nextEndPeriod = timePeriodFromDate(baseEnd);
+
+    setSlotMode("start");
+    setSlotMonth(new Date(baseStart.getFullYear(), baseStart.getMonth(), 1));
+    setSlotStartDate(nextStartDate);
+    setSlotEndDate(nextEndDate);
+    setSlotStartTime(nextStartTime);
+    setSlotEndTime(nextEndTime);
+    setSlotStartPeriod(nextStartPeriod);
+    setSlotEndPeriod(nextEndPeriod);
+    setSlotCalendarOpen(true);
+  }
+
+  function selectSlotDate(value: Date) {
+    const selectedDate = dateOnly(value);
+    if (slotMode === "start") {
+      setSlotStartDate(selectedDate);
+      if (!slotEndDate || selectedDate > slotEndDate) setSlotEndDate(selectedDate);
+      setSlotMode("end");
+      return;
+    }
+
+    setSlotEndDate(selectedDate);
+    if (slotStartDate && selectedDate < slotStartDate) setSlotStartDate(selectedDate);
+  }
+
+  function slotScheduleLabel() {
+    if (!slotStartDate || !slotEndDate) return "Choose appointment start and end time";
+    const preview = `${formatSelectedSchedule(slotStartDate, slotStartTime, slotStartPeriod)} - ${formatSelectedSchedule(slotEndDate, slotEndTime, slotEndPeriod)}`;
+    return preview;
+  }
+
   async function saveSlot(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!token) return;
 
-    const form = new FormData(event.currentTarget);
-    const startsAt = String(form.get("starts_at") ?? "");
-    const endsAt = String(form.get("ends_at") ?? "");
+    const formElement = event.currentTarget;
+    const form = new FormData(formElement);
+    const startsAt = combineDateAndTime(slotStartDate, slotStartTime, slotStartPeriod);
+    const endsAt = combineDateAndTime(slotEndDate, slotEndTime, slotEndPeriod);
 
     if (!startsAt || !endsAt) {
       showToast({ tone: "error", title: "Choose a time", body: "Add both a start and end time for this appointment slot." });
+      return;
+    }
+    if (startsAt <= new Date()) {
+      showToast({ tone: "error", title: "Choose a future time", body: "Appointment slots must start in the future." });
+      return;
+    }
+    if (endsAt <= startsAt) {
+      showToast({ tone: "error", title: "Choose a valid time", body: "The end time must be after the start time." });
       return;
     }
 
@@ -100,13 +182,19 @@ export default function ProfessionalAppointmentsPage() {
     try {
       const data = await createAvailability(token, {
         service_id: String(form.get("service_id") || "") || null,
-        starts_at: new Date(startsAt).toISOString(),
-        ends_at: new Date(endsAt).toISOString(),
+        starts_at: startsAt.toISOString(),
+        ends_at: endsAt.toISOString(),
         note: String(form.get("note") || "") || null
       });
       setAvailability((current) => [data.availability, ...current]);
       showToast({ tone: "success", title: "Slot added", body: "Clients can now request this appointment time." });
-      event.currentTarget.reset();
+      formElement.reset();
+      setSlotStartDate(null);
+      setSlotEndDate(null);
+      setSlotStartTime("8:00");
+      setSlotEndTime("9:00");
+      setSlotStartPeriod("am");
+      setSlotEndPeriod("am");
     } catch (err) {
       const message = err instanceof Error ? err.message : "Could not add appointment slot";
       showToast({ tone: "error", title: "Slot not added", body: message });
@@ -257,8 +345,17 @@ export default function ProfessionalAppointmentsPage() {
                 <option value="">General appointment</option>
                 {services.map((service) => <option key={service.id} value={service.id}>{service.title}</option>)}
               </SelectField>
-              <TextField label="Starts" name="starts_at" required type="datetime-local" />
-              <TextField label="Ends" name="ends_at" required type="datetime-local" />
+              <div>
+                <p className="text-sm font-semibold text-ink">Appointment schedule</p>
+                <button
+                  className="mt-2 flex min-h-12 w-full items-center justify-between gap-3 rounded-md border border-line bg-white px-3 py-3 text-left text-sm text-ink outline-none transition duration-200 hover:border-brand focus:border-brand focus:ring-4 focus:ring-teal-100"
+                  onClick={openSlotCalendar}
+                  type="button"
+                >
+                  <span className={slotStartDate && slotEndDate ? "leading-5" : "text-muted"}>{slotScheduleLabel()}</span>
+                  <CalendarDays className="shrink-0 text-brand" size={18} />
+                </button>
+              </div>
               <TextAreaField label="Slot note" name="note" placeholder="Optional note clients will see" rows={3} />
               <Button className="w-full" disabled={savingSlot} type="submit">
                 {savingSlot ? <span className="inline-flex items-center gap-2"><Spinner className="h-5 w-5" /> Adding slot</span> : "Add slot"}
@@ -292,6 +389,29 @@ export default function ProfessionalAppointmentsPage() {
           </Card>
         </aside>
       </div>
+      {slotCalendarOpen ? (
+        <ScheduleServiceCalendar
+          busy={savingSlot}
+          endDate={slotEndDate}
+          endPeriod={slotEndPeriod}
+          endTime={slotEndTime}
+          mode={slotMode}
+          month={slotMonth}
+          onClose={() => setSlotCalendarOpen(false)}
+          onEndPeriodChange={setSlotEndPeriod}
+          onEndTimeChange={setSlotEndTime}
+          onModeChange={setSlotMode}
+          onMonthChange={setSlotMonth}
+          onSelectDate={selectSlotDate}
+          onStartPeriodChange={setSlotStartPeriod}
+          onStartTimeChange={setSlotStartTime}
+          onSubmit={() => setSlotCalendarOpen(false)}
+          placement="fixed"
+          startDate={slotStartDate}
+          startPeriod={slotStartPeriod}
+          startTime={slotStartTime}
+        />
+      ) : null}
       {chatInquiry ? (
         <ChatModal
           appointment={chatAppointment}

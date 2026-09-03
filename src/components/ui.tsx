@@ -407,7 +407,7 @@ export function ApplicationStatusPill({ status }: { status: string }) {
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join(" ");
 
-  if (normalizedStatus === "selected" || normalizedStatus === "awarded") {
+  if (["selected", "awarded", "hired", "in_progress", "inprogress"].includes(normalizedStatus)) {
     return (
       <StatusPill tone="green">
         <Clock3 className="mr-1" size={13} />
@@ -430,6 +430,15 @@ export function ApplicationStatusPill({ status }: { status: string }) {
       <StatusPill tone="amber">
         <Clock3 className="mr-1" size={13} />
         Invited
+      </StatusPill>
+    );
+  }
+
+  if (normalizedStatus === "withdrawn") {
+    return (
+      <StatusPill tone="gray">
+        <CircleX className="mr-1" size={13} />
+        Withdrawn
       </StatusPill>
     );
   }
