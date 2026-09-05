@@ -1,15 +1,15 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { AlertCircle, CalendarDays, CheckCircle2, ChevronLeft, ChevronRight, Send, X } from "lucide-react";
+import { AlertCircle, CalendarDays, CheckCircle2, ChevronLeft, ChevronRight, Download, FileText, Send, X } from "lucide-react";
 import { Button, CustomSelect, IconButton, ProfileAvatar, Spinner, SurfaceModal } from "@/components/ui";
 import { ScheduleServiceCalendar as SharedScheduleServiceCalendar } from "@/components/schedule-service-calendar";
 import { useToast } from "@/components/toast";
 import { useAuth, useRequireAuth } from "@/hooks/use-auth";
 import { requestAppointmentReschedule, respondAppointmentReschedule } from "@/services/appointment-service";
-import { getConversationMessages, hireConversationProfessional, markConversationRead, sendConversationMessage, setConversationWorkSchedule } from "@/services/conversation-service";
+import { acceptConversationQuote, getConversationMessages, getConversationQuotes, hireConversationProfessional, markConversationRead, requestConversationQuoteReview, sendConversationMessage, sendConversationQuote, setConversationWorkSchedule } from "@/services/conversation-service";
 import { getInquiryMessages, markInquiryRead, sendInquiryMessage } from "@/services/inquiry-service";
-import type { Appointment, AppointmentRescheduleRequest, ChatMessage, JobConversation, ProfessionalInquiry, Profile } from "@/types";
+import type { Appointment, AppointmentRescheduleRequest, ChatMessage, JobConversation, JobQuote, ProfessionalInquiry, Profile } from "@/types";
 
 function participantName(profile?: Pick<Profile, "first_name" | "last_name"> | null) {
   return `${profile?.first_name ?? ""} ${profile?.last_name ?? ""}`.trim() || "Accordia user";
@@ -37,11 +37,38 @@ const MONTH_NAMES = [
 const WEEKDAY_LABELS = ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"];
 const YEAR_PAGE_SIZE = 12;
 type TimePeriod = "am" | "pm";
+type QuoteFormState = {
+  projectTitle: string;
+  projectDescription: string;
+  totalBudget: string;
+  durationDays: string;
+};
 
 function containsContactInfo(value: string) {
   if (EMAIL_PATTERN.test(value) || URL_PATTERN.test(value)) return true;
   const candidates = value.match(PHONE_PATTERN) ?? [];
   return candidates.some((candidate) => candidate.replace(/\D/g, "").length >= 9);
+}
+
+function quoteAmount(value?: number | string | null) {
+  if (value === null || value === undefined) return null;
+  const amount = Number(value);
+  return Number.isFinite(amount) ? amount : null;
+}
+
+function formatMoney(value?: number | string | null, currency = "NGN") {
+  const amount = quoteAmount(value);
+  if (amount === null) return "Not provided";
+  return `${currency.toUpperCase()} ${amount.toLocaleString()}`;
+}
+
+function quoteStatusLabel(status: string) {
+  if (status === "review_requested") return "Review requested";
+  return status.charAt(0).toUpperCase() + status.slice(1);
+}
+
+function defaultQuoteForm(): QuoteFormState {
+  return { projectTitle: "", projectDescription: "", totalBudget: "", durationDays: "5" };
 }
 
 function dateOnly(value: Date) {
@@ -552,12 +579,20 @@ export function ChatModal({
   const [scheduleStartPeriod, setScheduleStartPeriod] = useState<TimePeriod>("am");
   const [scheduleEndPeriod, setScheduleEndPeriod] = useState<TimePeriod>("am");
   const [rescheduleBusy, setRescheduleBusy] = useState(false);
+  const [quotes, setQuotes] = useState<JobQuote[]>([]);
+  const [quoteFormOpen, setQuoteFormOpen] = useState(false);
+  const [quoteForm, setQuoteForm] = useState<QuoteFormState>(() => defaultQuoteForm());
+  const [quoteFiles, setQuoteFiles] = useState<File[]>([]);
+  const [quoteReviewNote, setQuoteReviewNote] = useState("");
+  const [quoteBusy, setQuoteBusy] = useState("");
 
   useEffect(() => {
     setCurrentConversation(conversation);
     setHireStep("ready");
     setContactWarning("");
     setPaymentNoticeOpen(false);
+    setQuoteFormOpen(false);
+    setQuoteReviewNote("");
   }, [conversation]);
 
   useEffect(() => {
@@ -585,8 +620,13 @@ export function ChatModal({
   const isClient = Boolean(jobConversation && profile?.id === jobConversation.client_id);
   const isRemoteJob = jobConversation?.job?.is_remote === true;
   const isInPersonJob = jobConversation?.job?.is_remote === false;
+  const isClosedJobRequest = ["closed", "cancelled"].includes(jobConversation?.job?.status?.toLowerCase() ?? "");
   const hasUpfrontPayment = Boolean(jobConversation?.upfront_payment_made_at);
   const isHired = ["selected", "awarded", "hired", "in_progress", "inprogress"].includes(jobConversation?.application?.status?.toLowerCase() ?? "");
+  const activeQuote = useMemo(() => quotes.find((quote) => quote.status !== "superseded") ?? null, [quotes]);
+  const acceptedQuote = useMemo(() => quotes.find((quote) => quote.status === "accepted") ?? null, [quotes]);
+  const fixedQuoteAmount = jobConversation?.job?.price_type === "fixed" ? quoteAmount(jobConversation.job.price_amount) : null;
+  const quoteCurrency = jobConversation?.job?.currency ?? "NGN";
   const canExchangeContactInfo = Boolean(jobConversation && isInPersonJob && hasUpfrontPayment);
   const latestPendingReschedule = useMemo(() => {
     const requests = currentAppointment?.reschedule_requests ?? [];
@@ -595,7 +635,8 @@ export function ChatModal({
       .sort((first, second) => new Date(second.created_at).getTime() - new Date(first.created_at).getTime())[0] ?? null;
   }, [currentAppointment?.reschedule_requests]);
   const canRescheduleAppointment = kind === "inquiry" && currentAppointment?.status === "accepted";
-  const canScheduleWork = Boolean(jobConversation && !isClient);
+  const canScheduleWork = Boolean(jobConversation && jobConversation.status === "open" && !isClosedJobRequest);
+  const canCreateQuote = Boolean(jobConversation && !isClient && jobConversation.status === "open" && !isClosedJobRequest && !hasUpfrontPayment && !acceptedQuote);
   const canRespondToReschedule = Boolean(latestPendingReschedule && profile?.id === latestPendingReschedule.requested_for);
   const chatDisclaimer = isInPersonJob
     ? hasUpfrontPayment
@@ -624,6 +665,16 @@ export function ChatModal({
     await (kind === "job" ? markConversationRead(token, currentConversation.id) : markInquiryRead(token, currentConversation.id)).catch(() => undefined);
   }, [currentConversation.id, kind, token]);
 
+  const loadQuotes = useCallback(async () => {
+    if (!token || !jobConversation) {
+      setQuotes([]);
+      return;
+    }
+
+    const data = await getConversationQuotes(token, jobConversation.id);
+    setQuotes(data.quotes);
+  }, [jobConversation, token]);
+
   useEffect(() => {
     if (!token) return;
     let isMounted = true;
@@ -640,13 +691,21 @@ export function ChatModal({
 
     const refreshTimer = window.setInterval(() => {
       loadMessages().catch(() => undefined);
+      loadQuotes().catch(() => undefined);
     }, 5000);
 
     return () => {
       isMounted = false;
       window.clearInterval(refreshTimer);
     };
-  }, [loadMessages, showToast, token]);
+  }, [loadMessages, loadQuotes, showToast, token]);
+
+  useEffect(() => {
+    loadQuotes().catch((err) => {
+      const message = err instanceof Error ? err.message : "Could not load quotes";
+      showToast({ tone: "error", title: "Quotes unavailable", body: message });
+    });
+  }, [loadQuotes, showToast]);
 
   async function sendMessage() {
     const body = draft.trim();
@@ -696,11 +755,115 @@ export function ChatModal({
     }
   }
 
+  function openQuoteForm() {
+    const latest = activeQuote?.status === "review_requested" ? activeQuote : null;
+    setQuoteForm({
+      projectTitle: latest?.project_title ?? jobConversation?.job?.title ?? "",
+      projectDescription: latest?.project_description ?? jobConversation?.job?.description ?? "",
+      totalBudget: String(fixedQuoteAmount ?? latest?.total_budget ?? jobConversation?.application?.proposed_rate ?? ""),
+      durationDays: String(latest?.duration_days ?? jobConversation?.application?.estimated_days ?? 5)
+    });
+    setQuoteFiles([]);
+    setQuoteFormOpen(true);
+  }
+
+  function changeQuoteFiles(files: FileList | null) {
+    const nextFiles = Array.from(files ?? []).slice(0, 5);
+    setQuoteFiles(nextFiles);
+  }
+
+  async function submitQuote() {
+    if (!token || !jobConversation) return;
+    const budget = fixedQuoteAmount ?? Number(quoteForm.totalBudget);
+    const duration = Number(quoteForm.durationDays);
+    if (!Number.isFinite(budget) || budget < 0) {
+      showToast({ tone: "error", title: "Check quote budget", body: "Enter a valid project budget." });
+      return;
+    }
+    if (!Number.isInteger(duration) || duration < 1) {
+      showToast({ tone: "error", title: "Check quote duration", body: "Enter a valid project duration." });
+      return;
+    }
+
+    setQuoteBusy("send");
+    try {
+      const data = await sendConversationQuote(token, jobConversation.id, {
+        project_title: quoteForm.projectTitle,
+        project_description: quoteForm.projectDescription,
+        total_budget: budget,
+        duration_days: duration,
+        attachments: quoteFiles.map((file) => ({ name: file.name, type: file.type || null, size: file.size }))
+      });
+      setQuotes((current) => [data.quote, ...current.map((quote) => ["sent", "review_requested"].includes(quote.status) ? { ...quote, status: "superseded" } : quote)]);
+      setMessages((current) => [...current, data.message]);
+      setQuoteFormOpen(false);
+      setQuoteReviewNote("");
+      showToast({ tone: "success", title: "Quote sent", body: "The client can now review it in chat." });
+    } catch (err) {
+      showToast({ tone: "error", title: "Quote not sent", body: err instanceof Error ? err.message : "Could not send quote" });
+    } finally {
+      setQuoteBusy("");
+    }
+  }
+
+  async function acceptQuote() {
+    if (!token || !jobConversation || !activeQuote) return;
+    setQuoteBusy("accept");
+    try {
+      const data = await acceptConversationQuote(token, jobConversation.id, activeQuote.id);
+      setQuotes((current) => [data.quote, ...current.filter((quote) => quote.id !== data.quote.id).map((quote) => quote.status === "accepted" ? quote : { ...quote, status: "superseded" })]);
+      if (data.message) setMessages((current) => [...current, data.message as ChatMessage]);
+      showToast({ tone: "success", title: "Quote accepted", body: "You can now continue to hiring and payment." });
+    } catch (err) {
+      showToast({ tone: "error", title: "Quote not accepted", body: err instanceof Error ? err.message : "Could not accept quote" });
+    } finally {
+      setQuoteBusy("");
+    }
+  }
+
+  async function requestQuoteReview() {
+    if (!token || !jobConversation || !activeQuote || !quoteReviewNote.trim()) return;
+    setQuoteBusy("review");
+    try {
+      const data = await requestConversationQuoteReview(token, jobConversation.id, activeQuote.id, quoteReviewNote.trim());
+      setQuotes((current) => [data.quote, ...current.filter((quote) => quote.id !== data.quote.id)]);
+      if (data.message) setMessages((current) => [...current, data.message as ChatMessage]);
+      setQuoteReviewNote("");
+      showToast({ tone: "success", title: "Review requested", body: "The professional has been notified." });
+    } catch (err) {
+      showToast({ tone: "error", title: "Review not sent", body: err instanceof Error ? err.message : "Could not request quote review" });
+    } finally {
+      setQuoteBusy("");
+    }
+  }
+
+  function downloadQuote(quote: JobQuote) {
+    const content = [
+      "Accordia Quote",
+      "",
+      `Project: ${quote.project_title}`,
+      `Budget: ${formatMoney(quote.total_budget, quoteCurrency)}`,
+      `Duration: ${quote.duration_days} day${quote.duration_days === 1 ? "" : "s"}`,
+      `Status: ${quoteStatusLabel(quote.status)}`,
+      "",
+      quote.project_description,
+      "",
+      quote.attachments?.length ? `Attachments: ${quote.attachments.map((attachment) => attachment.name).join(", ")}` : "Attachments: None"
+    ].join("\n");
+    const url = URL.createObjectURL(new Blob([content], { type: "text/plain" }));
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `${quote.project_title.replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "").toLowerCase() || "quote"}.accordia.txt`;
+    link.click();
+    URL.revokeObjectURL(url);
+  }
+
   function formatRescheduleRange(request: Pick<AppointmentRescheduleRequest, "proposed_starts_at" | "proposed_ends_at">) {
     return `${new Date(request.proposed_starts_at).toLocaleString()} - ${new Date(request.proposed_ends_at).toLocaleString()}`;
   }
 
   function openRescheduleCalendar() {
+    window.scrollTo({ top: 0, behavior: "smooth" });
     const baseStart = currentAppointment?.starts_at
       ? new Date(currentAppointment.starts_at)
       : jobConversation?.work_starts_at
@@ -746,7 +909,7 @@ export function ChatModal({
       return;
     }
     if (proposedStart <= new Date()) {
-      showToast({ tone: "error", title: "Choose a future schedule", body: "The new appointment start time must be in the future." });
+      showToast({ tone: "error", title: "Choose a future schedule", body: "The schedule start time must be in the future." });
       return;
     }
     if (proposedEnd <= proposedStart) {
@@ -807,6 +970,7 @@ export function ChatModal({
     <SurfaceModal onClose={onClose} panelClassName="flex h-[calc(100dvh-24px)] max-h-[900px] min-h-0 flex-col overflow-hidden sm:h-[calc(100vh-48px)] sm:min-h-[680px]" size="chat">
         {rescheduleOpen ? (
           <SharedScheduleServiceCalendar
+            align={jobConversation ? "top" : "center"}
             busy={rescheduleBusy}
             currentEndDate={currentAppointment?.ends_at ? dateOnly(new Date(currentAppointment.ends_at)) : jobConversation?.work_ends_at ? dateOnly(new Date(jobConversation.work_ends_at)) : null}
             currentScheduleLabel={
@@ -837,7 +1001,118 @@ export function ChatModal({
             startTime={scheduleStartTime}
           />
         ) : null}
-        {isClient && jobConversation && !isHired && !hasUpfrontPayment && hireStep === "ready" ? (
+        {quoteFormOpen && jobConversation ? (
+          <div className="fixed inset-0 z-[100] flex items-start justify-center overflow-y-auto bg-black/25 p-3 sm:p-6">
+            <section className="relative mt-4 w-full max-w-3xl rounded-[10px] border border-line bg-white p-5 shadow-xl sm:p-7">
+              <button aria-label="Close quote form" className="absolute right-4 top-4 text-black transition hover:text-[#196c88]" onClick={() => setQuoteFormOpen(false)} type="button">
+                <X size={22} />
+              </button>
+              <h2 className="pr-10 text-[24px] font-semibold text-[#5e5e5e]">{activeQuote?.status === "review_requested" ? "Review Quote" : "Create Quote"}</h2>
+              {activeQuote?.status === "review_requested" && activeQuote.review_note ? (
+                <p className="mt-3 rounded-[6px] border border-[#f9d999] bg-[#fffbe6] p-3 text-sm leading-6 text-[#5e5e5e]">{activeQuote.review_note}</p>
+              ) : null}
+              <div className="mt-6 space-y-4">
+                <label className="block text-sm font-semibold text-[#5e5e5e]">
+                  Project Title
+                  <input className="mt-2 min-h-11 w-full rounded-[6px] border border-line px-3 text-sm outline-none transition focus:border-[#196c88] focus:ring-4 focus:ring-teal-100" onChange={(event) => setQuoteForm((current) => ({ ...current, projectTitle: event.target.value }))} value={quoteForm.projectTitle} />
+                </label>
+                <label className="block text-sm font-semibold text-[#5e5e5e]">
+                  Project Description
+                  <textarea className="mt-2 min-h-[132px] w-full resize-y rounded-[6px] border border-line px-3 py-3 text-sm outline-none transition focus:border-[#196c88] focus:ring-4 focus:ring-teal-100" onChange={(event) => setQuoteForm((current) => ({ ...current, projectDescription: event.target.value }))} value={quoteForm.projectDescription} />
+                </label>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <label className="block text-sm font-semibold text-[#5e5e5e]">
+                    Total Project Budget{fixedQuoteAmount !== null ? " (Fixed Price)" : ""}
+                    <input
+                      className="mt-2 min-h-11 w-full rounded-[6px] border border-line px-3 text-sm outline-none transition disabled:bg-slate-50 disabled:text-[#757575] focus:border-[#196c88] focus:ring-4 focus:ring-teal-100"
+                      disabled={fixedQuoteAmount !== null}
+                      min={0}
+                      onChange={(event) => setQuoteForm((current) => ({ ...current, totalBudget: event.target.value }))}
+                      type="number"
+                      value={fixedQuoteAmount !== null ? String(fixedQuoteAmount) : quoteForm.totalBudget}
+                    />
+                  </label>
+                  <label className="block text-sm font-semibold text-[#5e5e5e]">
+                    Duration
+                    <input className="mt-2 min-h-11 w-full rounded-[6px] border border-line px-3 text-sm outline-none transition focus:border-[#196c88] focus:ring-4 focus:ring-teal-100" min={1} onChange={(event) => setQuoteForm((current) => ({ ...current, durationDays: event.target.value }))} type="number" value={quoteForm.durationDays} />
+                  </label>
+                </div>
+                <label className="block text-sm font-semibold text-[#5e5e5e]">
+                  Attachments
+                  <span className="mt-2 flex min-h-[96px] cursor-pointer flex-col items-center justify-center rounded-[6px] border border-dashed border-[#b8d1da] px-4 text-center text-sm text-[#a4a4a4] transition hover:border-[#196c88]">
+                    <span><span className="font-semibold text-[#196c88]">Click to upload</span> or Drag and drop file</span>
+                    <span className="mt-1">Max file size: 5mb</span>
+                    <input className="sr-only" multiple onChange={(event) => changeQuoteFiles(event.target.files)} type="file" />
+                  </span>
+                </label>
+                {quoteFiles.length > 0 ? (
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    {quoteFiles.map((file) => (
+                      <div className="flex items-center gap-2 rounded-[6px] border border-line px-3 py-2 text-sm text-[#5e5e5e]" key={`${file.name}-${file.size}`}>
+                        <FileText className="shrink-0 text-[#196c88]" size={17} />
+                        <span className="truncate">{file.name}</span>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+              <div className="mt-7 flex flex-wrap justify-end gap-3">
+                <Button className="rounded-[5px] px-5" onClick={() => setQuoteFormOpen(false)} type="button" variant="secondary">Cancel</Button>
+                <Button className="rounded-[5px] px-5" disabled={quoteBusy === "send"} onClick={submitQuote} type="button">
+                  {quoteBusy === "send" ? <Spinner className="h-5 w-5" /> : "Send Quote to chat"}
+                </Button>
+              </div>
+            </section>
+          </div>
+        ) : null}
+        {jobConversation && activeQuote ? (
+          <div className={`m-4 mb-0 rounded-[8px] border-b-[3px] p-4 ${activeQuote.status === "accepted" ? "border-[#0fa269] bg-[#f3fef3]" : activeQuote.status === "review_requested" ? "border-[#f4a422] bg-[#fffbe6]" : "border-[#196c88] bg-[#f8fbfc]"}`}>
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div className="min-w-0">
+                <p className="text-[15px] font-semibold text-[#5e5e5e] sm:text-[16px]">{activeQuote.project_title}</p>
+                <p className="mt-1 text-sm leading-5 text-[#757575]">{formatMoney(activeQuote.total_budget, quoteCurrency)} - {activeQuote.duration_days} day{activeQuote.duration_days === 1 ? "" : "s"} - {quoteStatusLabel(activeQuote.status)}</p>
+                {activeQuote.review_note && activeQuote.status === "review_requested" ? <p className="mt-2 text-sm leading-5 text-[#5e5e5e]">{activeQuote.review_note}</p> : null}
+              </div>
+              <div className="flex shrink-0 flex-wrap gap-2">
+                <Button className="h-10 rounded-[5px] px-3 py-0" onClick={() => downloadQuote(activeQuote)} type="button" variant="secondary"><Download size={16} /> Download</Button>
+                {isClient && activeQuote.status === "sent" ? <Button className="h-10 rounded-[5px] px-4 py-0" disabled={quoteBusy === "accept"} onClick={acceptQuote} type="button">{quoteBusy === "accept" ? <Spinner className="h-4 w-4" /> : "Accept"}</Button> : null}
+                {canCreateQuote && activeQuote.status === "review_requested" ? <Button className="h-10 rounded-[5px] px-4 py-0" onClick={openQuoteForm} type="button">Revise Quote</Button> : null}
+              </div>
+            </div>
+            {isClient && activeQuote.status === "sent" ? (
+              <div className="mt-3 grid gap-2 sm:grid-cols-[1fr_auto]">
+                <input className="min-h-10 rounded-[6px] border border-line px-3 text-sm outline-none transition focus:border-[#196c88] focus:ring-4 focus:ring-teal-100" onChange={(event) => setQuoteReviewNote(event.target.value)} placeholder="Request a quote review..." value={quoteReviewNote} />
+                <Button className="h-10 rounded-[5px] px-4 py-0" disabled={quoteBusy === "review" || quoteReviewNote.trim().length < 3} onClick={requestQuoteReview} type="button" variant="secondary">{quoteBusy === "review" ? <Spinner className="h-4 w-4" /> : "Request review"}</Button>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+        {canCreateQuote && !activeQuote ? (
+          <div className="m-4 mb-0 rounded-[8px] border-b-[3px] border-[#196c88] bg-[#f8fbfc] p-4">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex min-w-0 items-start gap-3">
+                <FileText className="mt-0.5 shrink-0 text-[#196c88]" size={24} strokeWidth={1.8} />
+                <div>
+                  <p className="text-[15px] font-semibold text-[#5e5e5e] sm:text-[16px]">Create a quote</p>
+                  <p className="mt-1 text-sm leading-5 text-[#757575]">Send scope, budget, duration, and supporting attachment details before payment.</p>
+                </div>
+              </div>
+              <Button className="shrink-0 rounded-[5px] px-5" onClick={openQuoteForm} type="button">Create Quote</Button>
+            </div>
+          </div>
+        ) : null}
+        {isClient && jobConversation && !hasUpfrontPayment && !acceptedQuote ? (
+          <div className="m-4 mb-0 rounded-[8px] border-b-[3px] border-[#f4a422] bg-[#fffbe6] p-4">
+            <div className="flex items-start gap-3">
+              <AlertCircle className="mt-0.5 shrink-0 text-[#f4a422]" size={24} />
+              <div>
+                <p className="text-[15px] font-semibold text-[#5e5e5e] sm:text-[16px]">Quote required before hiring</p>
+                <p className="mt-1 text-sm leading-5 text-[#757575]">Review and accept a quote in this chat before upfront payment can continue.</p>
+              </div>
+            </div>
+          </div>
+        ) : null}
+        {isClient && jobConversation && !isHired && !hasUpfrontPayment && acceptedQuote && hireStep === "ready" ? (
           <div className="m-4 mb-0 rounded-[8px] border-b-[3px] border-[#f4a422] bg-[#fffbe6] p-4">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div className="flex min-w-0 items-start gap-3">
@@ -853,7 +1128,7 @@ export function ChatModal({
             </div>
           </div>
         ) : null}
-        {isClient && jobConversation && !isHired && !hasUpfrontPayment && hireStep === "payment" ? (
+        {isClient && jobConversation && !isHired && !hasUpfrontPayment && acceptedQuote && hireStep === "payment" ? (
           <div className="m-4 mb-0 rounded-[8px] border-b-[3px] border-[#f4a422] bg-[#fffbe6] p-4">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div className="flex min-w-0 items-start gap-3">

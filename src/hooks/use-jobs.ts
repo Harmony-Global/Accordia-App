@@ -5,6 +5,7 @@ import { useRequireAuth } from "@/hooks/use-auth";
 import { getConversations } from "@/services/conversation-service";
 import {
   applyToJob,
+  closeJobRequest,
   createJob,
   declineApplication,
   getClientJobs,
@@ -53,7 +54,18 @@ export function useClientJobs() {
     return createJob(token, payload);
   }
 
-  return { jobs, error, loading, refreshing, refresh, publishJob };
+  async function closeJob(jobId: string) {
+    if (!token) throw new Error("You need to log in again");
+    const data = await closeJobRequest(token, jobId);
+    setJobs((current) => {
+      const nextJobs = current.map((job) => job.id === jobId ? { ...job, ...data.job, applications: job.applications, rejected_applications: job.rejected_applications, categories: job.categories, category: job.category, client: job.client } : job);
+      cachedClientJobs = nextJobs;
+      return nextJobs;
+    });
+    return data.job;
+  }
+
+  return { jobs, error, loading, refreshing, refresh, publishJob, closeJob };
 }
 
 export function useMatchedJobs() {

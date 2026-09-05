@@ -6,6 +6,8 @@ export type CreateJobPayload = {
   description: string;
   category_id: string;
   number_of_professionals: number;
+  price_type: "fixed" | "negotiable";
+  price_amount: number;
   location: string;
   state: string;
   is_remote: boolean;
@@ -103,9 +105,17 @@ export function withdrawApplication(token: string, applicationId: string) {
 }
 
 export function deleteApplication(token: string, applicationId: string) {
-  return apiFetch<{ application_id: string }>(`/api/applications/${applicationId}`, {
+  return apiFetch<{ application_id: string; deleted: boolean }>(`/api/applications/${applicationId}`, {
     token,
     method: "DELETE"
+  });
+}
+
+export function closeJobRequest(token: string, jobId: string) {
+  return apiFetch<{ job: Job }>(`/api/jobs/${jobId}/close`, {
+    token,
+    method: "POST",
+    body: {}
   });
 }
 

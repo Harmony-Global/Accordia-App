@@ -14,6 +14,7 @@ import { createJob } from "@/services/job-service";
 const MIN_PROFESSIONALS = 1;
 const MAX_PROFESSIONALS = 50;
 type WorkType = "remote" | "in_person";
+type PriceType = "fixed" | "negotiable";
 
 function clampProfessionals(value: number) {
   if (Number.isNaN(value)) return MIN_PROFESSIONALS;
@@ -28,6 +29,7 @@ export default function NewJobPage() {
   const [loading, setLoading] = useState(false);
   const [numberOfProfessionals, setNumberOfProfessionals] = useState(1);
   const [workType, setWorkType] = useState<WorkType>("in_person");
+  const [priceType, setPriceType] = useState<PriceType>("negotiable");
 
   useEffect(() => {
     if (categoryError) {
@@ -43,11 +45,17 @@ export default function NewJobPage() {
     const form = new FormData(event.currentTarget);
     try {
       if (!token) throw new Error("Your session has expired. Please log in again.");
+      const priceAmount = Number(form.get("price_amount"));
+      if (!Number.isFinite(priceAmount) || priceAmount < 0) {
+        throw new Error("Enter a valid request price.");
+      }
       await createJob(token, {
         title: String(form.get("title")),
         description: String(form.get("description")),
         category_id: String(form.get("category_id")),
         number_of_professionals: numberOfProfessionals,
+        price_type: priceType,
+        price_amount: priceAmount,
         location: String(form.get("location")),
         state: String(form.get("state")),
         is_remote: workType === "remote"
@@ -136,6 +144,32 @@ export default function NewJobPage() {
                 </button>
               </span>
             </span>
+          </label>
+
+          <label className="block text-sm font-medium leading-6 text-[#585858]">
+            Price Type
+            <CustomSelect
+              className="mt-2"
+              name="price_type"
+              onChange={(event) => setPriceType(event.target.value as PriceType)}
+              triggerClassName="h-12 rounded-[10px] border-[#d0d0d0] px-4 text-sm text-ink hover:border-[#a4a4a4]"
+              value={priceType}
+            >
+              <option value="negotiable">Negotiable</option>
+              <option value="fixed">Fixed</option>
+            </CustomSelect>
+          </label>
+
+          <label className="block text-sm font-medium leading-6 text-[#585858]">
+            {priceType === "fixed" ? "Fixed Price" : "Starting Price"}
+            <input
+              className="mt-2 h-12 w-full rounded-[10px] border border-[#d0d0d0] bg-white px-4 text-sm text-ink outline-none transition hover:border-[#a4a4a4] focus:border-brand focus:ring-4 focus:ring-teal-100"
+              min={0}
+              name="price_amount"
+              placeholder="Enter amount"
+              required
+              type="number"
+            />
           </label>
 
           <label className="block text-sm font-medium leading-6 text-[#585858]">

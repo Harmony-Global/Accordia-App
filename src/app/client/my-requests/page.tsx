@@ -5,7 +5,7 @@ import { Suspense, useCallback, useEffect, useState } from "react";
 import { BriefcaseBusiness, CheckCircle2, ChevronDown, Clock3, Download, Eye, File, FileImage, FileSpreadsheet, FileText, MapPin, MessagesSquare, RefreshCw, ShieldCheck, Star, X, type LucideIcon } from "lucide-react";
 import { AppShell, EmptyState } from "@/components/app-shell";
 import { ChatModal } from "@/components/chat-modal";
-import { ApplicationStatusPill, Button, IconButton, MoreButton, PageLoader, ProfileAvatar, Spinner, StatusPill, TextAreaField } from "@/components/ui";
+import { ApplicationStatusPill, Button, IconButton, MoreButton, PageLoader, ProfileAvatar, Spinner, StatusPill, SurfaceModal, TextAreaField } from "@/components/ui";
 import { useToast } from "@/components/toast";
 import { useRequireAuth } from "@/hooks/use-auth";
 import { useConversations } from "@/hooks/use-conversations";
@@ -167,6 +167,10 @@ function canPreviewAttachment(attachment: ProposalAttachment) {
 
 function formatProposalPrice(value?: number | null) {
   return value ? `#${value.toLocaleString()}` : "Not provided";
+}
+
+function isFixedPriceJob(job?: Pick<Job, "price_type"> | null) {
+  return job?.price_type === "fixed";
 }
 
 function formatEstimatedDays(value?: number | null) {
@@ -398,7 +402,7 @@ function ProposalModal({
 
           <section className="mt-7 grid gap-4 rounded-[5px] border border-[#b8d1da] bg-[#fcfdfd] px-3 py-4 sm:grid-cols-2 md:px-4">
             <div>
-              <p className="text-[16px] font-semibold leading-[1.4] text-[#5e5e5e] md:text-[18px]">Proposed Price</p>
+              <p className="text-[16px] font-semibold leading-[1.4] text-[#5e5e5e] md:text-[18px]">{isFixedPriceJob(application.job) ? "Proposed Price (Fixed Price)" : "Proposed Price"}</p>
               <p className="mt-2 text-[22px] font-semibold leading-[1.2] text-[#5e5e5e] md:text-[26px]">{formatProposalPrice(application.proposed_rate)}</p>
             </div>
             <div>
@@ -818,7 +822,7 @@ function MetricAction({
   );
 }
 
-function FigmaStatusPill({ progress }: { progress: ReturnType<typeof requestAvailability> }) {
+function FigmaStatusPill({ onClick, progress }: { onClick?: () => void; progress: ReturnType<typeof requestAvailability> }) {
   const Icon = progress.Icon;
   const styles = {
     teal: "bg-[#f2f6f8] text-[#196c88]",
@@ -827,6 +831,19 @@ function FigmaStatusPill({ progress }: { progress: ReturnType<typeof requestAvai
     red: "bg-red-50 text-red-700",
     gray: "bg-[#f1f1f1] text-[#5e5e5e]"
   };
+
+  if (onClick) {
+    return (
+      <button
+        className={`inline-flex h-7 min-w-[96px] items-center justify-center gap-1.5 rounded-full px-3 text-[12px] font-medium leading-[1.5] transition hover:ring-2 hover:ring-[#b8d1da] sm:min-w-[104px] sm:text-[13px] ${styles[progress.tone]}`}
+        onClick={onClick}
+        type="button"
+      >
+        <Icon size={13} strokeWidth={1.8} />
+        {progress.label}
+      </button>
+    );
+  }
 
   return (
     <span className={`inline-flex h-7 min-w-[96px] items-center justify-center gap-1.5 rounded-full px-3 text-[12px] font-medium leading-[1.5] sm:min-w-[104px] sm:text-[13px] ${styles[progress.tone]}`}>
@@ -837,15 +854,24 @@ function FigmaStatusPill({ progress }: { progress: ReturnType<typeof requestAvai
 }
 
 function RequestCard({
+  closeActionOpen,
   job,
   selected,
+  closing,
+  onCloseRequest,
+  onToggleCloseAction,
   onSelect
 }: {
+  closeActionOpen: boolean;
   job: Job;
   selected: boolean;
+  closing: boolean;
+  onCloseRequest: () => void;
+  onToggleCloseAction: () => void;
   onSelect: () => void;
 }) {
   const progress = requestAvailability(job);
+  const canClose = progress.label === "Open";
   const acceptedCount = acceptedProfessionalCount(job);
   const professionalsNeeded = job.number_of_professionals || 1;
   const categoryName = job.categories?.name ?? job.category?.name ?? "General service";
@@ -860,7 +886,17 @@ function RequestCard({
             <span className="inline-flex h-7 max-w-full items-center justify-center truncate rounded-full bg-[#f2f6f8] px-3 text-center text-[12px] font-medium leading-[1.5] text-[#196c88] sm:text-[13px]">
               {categoryName}
             </span>
-            <FigmaStatusPill progress={progress} />
+            <FigmaStatusPill onClick={canClose ? onToggleCloseAction : undefined} progress={progress} />
+            {canClose && closeActionOpen ? (
+              <button
+                className="inline-flex h-7 min-w-[76px] items-center justify-center rounded-full border border-red-200 bg-red-50 px-3 text-[12px] font-medium leading-[1.5] text-red-700 transition hover:border-red-300 hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-60 sm:text-[13px]"
+                disabled={closing}
+                onClick={onCloseRequest}
+                type="button"
+              >
+                {closing ? <Spinner className="h-3.5 w-3.5 border-2" /> : "Close"}
+              </button>
+            ) : null}
           </div>
           <p className="w-full text-left text-[12px] font-medium leading-[1.4] text-[#f4a422] sm:w-auto sm:text-[13px] lg:w-[190px]">
             {acceptedCount} of {professionalsNeeded} Professionals accepted
@@ -1624,7 +1660,10 @@ function JobEngagementPanel({
         description: conversation.job?.description ?? job.description,
         number_of_professionals: conversation.job?.number_of_professionals ?? job.number_of_professionals,
         location: conversation.job?.location ?? job.location,
-        state: conversation.job?.state ?? job.state
+        state: conversation.job?.state ?? job.state,
+        price_type: conversation.job?.price_type ?? job.price_type,
+        price_amount: conversation.job?.price_amount ?? job.price_amount,
+        currency: conversation.job?.currency ?? job.currency
       }
     };
   }
@@ -1781,7 +1820,7 @@ function JobEngagementPanel({
 
 function ClientJobsContent() {
   const token = useRequireAuth();
-  const { jobs, error, loading, refreshing, refresh } = useClientJobs();
+  const { jobs, error, loading, refreshing, refresh, closeJob } = useClientJobs();
   const { conversations, error: conversationsError, loading: conversationsLoading, refresh: refreshConversations } = useConversations();
   const searchParams = useSearchParams();
   const showToast = useToast();
@@ -1794,6 +1833,9 @@ function ClientJobsContent() {
   const [rejectedLoading, setRejectedLoading] = useState(false);
   const [requestNotifications, setRequestNotifications] = useState<Notification[]>([]);
   const [requestTabSeenAt, setRequestTabSeenAt] = useState<RequestTabSeenAt>(initialRequestTabSeenAt);
+  const [closingJobId, setClosingJobId] = useState("");
+  const [closeActionJobId, setCloseActionJobId] = useState("");
+  const [closeTarget, setCloseTarget] = useState<Job | null>(null);
   const jobIdParam = searchParams.get("job_id");
   const conversationIdParam = searchParams.get("conversation_id");
   const activeConversations = sortByLatestActivity(
@@ -1883,6 +1925,24 @@ function ClientJobsContent() {
     loadRequestNotifications();
   }
 
+  async function closeRequest(job: Job) {
+    setClosingJobId(job.id);
+    try {
+      await closeJob(job.id);
+      if (selectedJobId === job.id) setSelectedJobId(null);
+      setCloseActionJobId("");
+      setCloseTarget(null);
+      refreshConversations();
+      loadRequestNotifications();
+      showToast({ tone: "success", title: "Request closed", body: "This request is no longer accepting applications." });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Could not close this request";
+      showToast({ tone: "error", title: "Close failed", body: message });
+    } finally {
+      setClosingJobId("");
+    }
+  }
+
   function withConversationJob(conversation: JobConversation) {
     const job = jobs.find((item) => item.id === conversation.job_id);
     if (!job) return conversation;
@@ -1899,7 +1959,10 @@ function ClientJobsContent() {
         description: conversation.job?.description ?? job.description,
         number_of_professionals: conversation.job?.number_of_professionals ?? job.number_of_professionals,
         location: conversation.job?.location ?? job.location,
-        state: conversation.job?.state ?? job.state
+        state: conversation.job?.state ?? job.state,
+        price_type: conversation.job?.price_type ?? job.price_type,
+        price_amount: conversation.job?.price_amount ?? job.price_amount,
+        currency: conversation.job?.currency ?? job.currency
       }
     };
   }
@@ -2103,7 +2166,16 @@ function ClientJobsContent() {
               {requestsBusy ? Array.from({ length: 4 }).map((_, index) => <RequestCardSkeleton key={index} />) : null}
               {!requestsBusy ? filteredJobs.map((job) => {
                 return (
-                  <RequestCard job={job} key={job.id} onSelect={() => openJobActivity(job.id)} selected={selectedJobId === job.id} />
+                  <RequestCard
+                    closeActionOpen={closeActionJobId === job.id}
+                    closing={closingJobId === job.id}
+                    job={job}
+                    key={job.id}
+                    onCloseRequest={() => setCloseTarget(job)}
+                    onSelect={() => openJobActivity(job.id)}
+                    onToggleCloseAction={() => setCloseActionJobId((current) => current === job.id ? "" : job.id)}
+                    selected={selectedJobId === job.id}
+                  />
                 );
               }) : null}
             </div>
@@ -2120,6 +2192,28 @@ function ClientJobsContent() {
         ) : null}
         {profileApplication ? <ProfessionalProfileModal application={profileApplication} onClose={() => setProfileApplication(null)} /> : null}
         {chatConversation ? <ChatModal conversation={chatConversation} onClose={() => setChatConversation(null)} onHired={refreshAll} /> : null}
+        {closeTarget ? (
+          <SurfaceModal onClose={() => setCloseTarget(null)} panelClassName="p-5 sm:p-6" size="sm">
+            <button aria-label="Close confirmation" className="absolute right-4 top-4 text-black transition hover:text-[#196c88]" onClick={() => setCloseTarget(null)} type="button">
+              <X size={20} />
+            </button>
+            <div className="pr-8">
+              <p className="text-sm font-medium text-[#196c88]">Close Request</p>
+              <h2 className="mt-3 text-[22px] font-semibold leading-snug text-[#5e5e5e]">Close this job request?</h2>
+              <p className="mt-3 text-sm leading-6 text-[#757575]">
+                This request will stop accepting applications and cannot be reopened.
+              </p>
+            </div>
+            <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+              <Button className="rounded-[5px] px-5" disabled={closingJobId === closeTarget.id} onClick={() => setCloseTarget(null)} type="button" variant="secondary">
+                Keep Open
+              </Button>
+              <Button className="rounded-[5px] bg-red-700 px-5 hover:bg-red-800" disabled={closingJobId === closeTarget.id} onClick={() => closeRequest(closeTarget)} type="button">
+                {closingJobId === closeTarget.id ? <span className="inline-flex items-center gap-2"><Spinner className="h-4 w-4" /> Closing</span> : "Close Request"}
+              </Button>
+            </div>
+          </SurfaceModal>
+        ) : null}
       </div>
     </AppShell>
   );
