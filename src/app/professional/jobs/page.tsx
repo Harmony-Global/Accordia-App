@@ -79,6 +79,22 @@ function formatCurrency(value?: number | null) {
   return value ? `#${value.toLocaleString()}` : "Not provided";
 }
 
+function jobPriceAmount(job?: Pick<Job, "price_amount"> | null) {
+  const amount = Number(job?.price_amount);
+  return Number.isFinite(amount) ? amount : null;
+}
+
+function isFixedPriceJob(job?: Pick<Job, "price_type"> | null) {
+  return job?.price_type === "fixed";
+}
+
+function formatJobPrice(job?: Pick<Job, "price_amount" | "price_type" | "currency"> | null) {
+  const amount = jobPriceAmount(job);
+  if (amount === null) return "Price not provided";
+  const label = isFixedPriceJob(job) ? "Fixed Price" : "Negotiable";
+  return `${label}: ${(job?.currency ?? "NGN").toUpperCase()} ${amount.toLocaleString()}`;
+}
+
 function formatEstimatedDays(value?: number | null) {
   return value ? `${value}day${value === 1 ? "" : "s"}` : "Not provided";
 }
@@ -330,6 +346,7 @@ function RequestDetailsModal({ job, onClose, onSendProposal }: { job: Job; onClo
           <StatusPill tone="gray">{job.is_remote ? "Remote" : "In-person"}</StatusPill>
         </div>
         <p className="mt-8 text-[16px] font-semibold text-[#196c88]">{applicantRequirement(job.number_of_professionals)}</p>
+        <p className="mt-3 text-[16px] font-semibold text-[#f4a422]">{formatJobPrice(job)}</p>
         <h3 className="mt-6 text-[28px] font-medium leading-tight text-[#5e5e5e]">{job.title}</h3>
         <p className="mt-6 whitespace-pre-line text-[17px] font-light leading-8 text-[#8f8f8f]">{job.description}</p>
         <Button className="mt-12 h-12 rounded-[5px] px-5 py-0" disabled={!isOpenJob(job)} onClick={onSendProposal} type="button">
@@ -341,16 +358,20 @@ function RequestDetailsModal({ job, onClose, onSendProposal }: { job: Job; onClo
   );
 }
 
-function CreateProposalModal({ busy, files, form, onClose, onFileChange, onFormChange, onSaveDraft, onSend }: {
+function CreateProposalModal({ busy, files, form, job, onClose, onFileChange, onFormChange, onSaveDraft, onSend }: {
   busy: string;
   files: File[];
   form: ProposalFormState;
+  job: Job;
   onClose: () => void;
   onFileChange: (files: FileList | null) => void;
   onFormChange: (next: Partial<ProposalFormState>) => void;
   onSaveDraft: () => void;
   onSend: () => void;
 }) {
+  const fixedPrice = isFixedPriceJob(job);
+  const fixedAmount = jobPriceAmount(job);
+  const displayedProposedRate = fixedPrice && fixedAmount !== null ? String(fixedAmount) : form.proposedRate;
   const defaultDate = useMemo(() => {
     const date = new Date();
     date.setDate(date.getDate() + 1);
@@ -416,7 +437,17 @@ function CreateProposalModal({ busy, files, form, onClose, onFileChange, onFormC
               </button>
             </div>
           </div>
-          <TextField className="mt-5" label="Proposed Price" min={0} onChange={(event) => onFormChange({ proposedRate: event.target.value })} placeholder="Enter Amount" type="number" value={form.proposedRate} />
+          <TextField
+            className="mt-5"
+            disabled={fixedPrice}
+            label={fixedPrice ? "Proposed Price (Fixed Price)" : "Proposed Price"}
+            min={0}
+            onChange={(event) => onFormChange({ proposedRate: event.target.value })}
+            placeholder="Enter Amount"
+            type="number"
+            value={displayedProposedRate}
+          />
+          {fixedPrice ? <p className="mt-2 text-sm font-medium text-[#196c88]">This job request has a fixed price set by the client.</p> : null}
           <TextAreaField className="mt-5" label="Proposal Message" onChange={(event) => onFormChange({ pitch: event.target.value })} placeholder="Enter Proposal Message" rows={7} value={form.pitch} />
           <div className="mt-6">
             <p className="text-sm font-semibold text-ink">Attachments</p>
@@ -495,7 +526,7 @@ function ApplicationDetailsModal({ application, conversation, onAcceptInvite, on
         <h3 className="mt-8 text-[28px] font-medium leading-tight text-[#5e5e5e]">{application.job?.title ?? "Applied job"}</h3>
         <p className="mt-4 whitespace-pre-line text-[17px] font-light leading-8 text-[#8f8f8f]">{application.pitch}</p>
         <section className="mt-8 grid gap-4 rounded-[5px] border border-[#b8d1da] bg-[#fcfdfd] p-4 md:grid-cols-3">
-          <div><p className="text-sm font-medium text-[#5e5e5e]">Proposed Price</p><p className="mt-3 text-[22px] font-semibold text-[#5e5e5e]">{formatCurrency(application.proposed_rate)}</p></div>
+          <div><p className="text-sm font-medium text-[#5e5e5e]">{isFixedPriceJob(application.job) ? "Proposed Price (Fixed Price)" : "Proposed Price"}</p><p className="mt-3 text-[22px] font-semibold text-[#5e5e5e]">{formatCurrency(application.proposed_rate)}</p></div>
           <div><p className="text-sm font-medium text-[#5e5e5e]">Estimated Duration</p><p className="mt-3 inline-flex items-center gap-2 text-[17px] text-[#5e5e5e]"><Clock3 className="text-[#196c88]" size={18} />{formatEstimatedDays(application.estimated_days)}</p></div>
           <div><p className="text-sm font-medium text-[#5e5e5e]">Proposed Start Date & Time</p><p className="mt-3 inline-flex items-center gap-2 text-[17px] text-[#5e5e5e]"><CalendarDays className="text-[#196c88]" size={18} />{formatDateTime(application.proposed_start_at)}</p></div>
         </section>
@@ -586,15 +617,19 @@ function ProfessionalJobsContent() {
       const data = await getProposalDraft(token, job.id);
       const savedDraft = data.draft;
       if (savedDraft) {
+        const fixedAmount = isFixedPriceJob(job) ? jobPriceAmount(job) : null;
         setProposalForms((current) => ({
           ...current,
           [job.id]: {
             pitch: savedDraft.pitch ?? "",
-            proposedRate: savedDraft.proposed_rate ? String(savedDraft.proposed_rate) : "",
+            proposedRate: fixedAmount !== null ? String(fixedAmount) : savedDraft.proposed_rate ? String(savedDraft.proposed_rate) : "",
             estimatedDays: savedDraft.estimated_days ? String(savedDraft.estimated_days) : "5",
             proposedStartAt: dateTimeInputValue(savedDraft.proposed_start_at)
           }
         }));
+      } else if (isFixedPriceJob(job)) {
+        const fixedAmount = jobPriceAmount(job);
+        if (fixedAmount !== null) updateForm(job.id, { proposedRate: String(fixedAmount) });
       }
     } catch (err) {
       showToast({ tone: "error", title: "Draft unavailable", body: err instanceof Error ? err.message : "Could not load proposal draft" });
@@ -604,12 +639,13 @@ function ProfessionalJobsContent() {
   async function saveDraft(job: Job) {
     if (!token) return;
     const form = formFor(job.id);
+    const fixedAmount = isFixedPriceJob(job) ? jobPriceAmount(job) : null;
     setBusy("draft");
     try {
       await saveProposalDraft(token, {
         job_id: job.id,
         pitch: form.pitch || null,
-        proposed_rate: form.proposedRate ? Number(form.proposedRate) : null,
+        proposed_rate: fixedAmount ?? (form.proposedRate ? Number(form.proposedRate) : null),
         estimated_days: form.estimatedDays ? Number(form.estimatedDays) : null,
         proposed_start_at: isoFromDateTimeInput(form.proposedStartAt),
         reference_image_urls: []
@@ -624,9 +660,10 @@ function ProfessionalJobsContent() {
 
   async function submitProposal(job: Job) {
     const form = formFor(job.id);
+    const fixedAmount = isFixedPriceJob(job) ? jobPriceAmount(job) : null;
     setBusy("send");
     try {
-      const data = await submitApplication(job.id, form.pitch, form.proposedRate ? Number(form.proposedRate) : null, form.estimatedDays ? Number(form.estimatedDays) : null, [], isoFromDateTimeInput(form.proposedStartAt));
+      const data = await submitApplication(job.id, form.pitch, fixedAmount ?? (form.proposedRate ? Number(form.proposedRate) : null), form.estimatedDays ? Number(form.estimatedDays) : null, [], isoFromDateTimeInput(form.proposedStartAt));
       const proposalFiles = proposalFilesByJob[job.id] ?? [];
       if (token && proposalFiles.length > 0) await Promise.all(proposalFiles.map((file) => uploadApplicationAttachment(token, data.application_id, file)));
       showToast({ tone: "success", title: "Application sent", body: "The client can now review your proposal." });
@@ -761,6 +798,7 @@ function ProfessionalJobsContent() {
           busy={busy}
           files={proposalFilesByJob[proposalJob.id] ?? []}
           form={formFor(proposalJob.id)}
+          job={proposalJob}
           onClose={() => setProposalJob(null)}
           onFileChange={(files) => addProposalFiles(proposalJob.id, files)}
           onFormChange={(next) => updateForm(proposalJob.id, next)}

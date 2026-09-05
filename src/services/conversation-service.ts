@@ -1,5 +1,5 @@
 import { apiFetch, apiFormData } from "@/services/http";
-import type { ChatMessage, DeliverableAttachment, JobConversation } from "@/types";
+import type { ChatMessage, DeliverableAttachment, JobConversation, JobQuote, JobQuoteAttachment } from "@/types";
 
 export function getConversations(token: string, jobId?: string | null) {
   const query = jobId ? `?job_id=${encodeURIComponent(jobId)}` : "";
@@ -26,6 +26,44 @@ export function setConversationWorkSchedule(token: string, conversationId: strin
       starts_at: startsAt,
       ends_at: endsAt
     }
+  });
+}
+
+export function getConversationQuotes(token: string, conversationId: string) {
+  return apiFetch<{ quotes: JobQuote[] }>(`/api/conversations/${conversationId}/quotes`, { token, cacheTtlMs: 0 });
+}
+
+export function sendConversationQuote(
+  token: string,
+  conversationId: string,
+  payload: {
+    project_title: string;
+    project_description: string;
+    total_budget: number;
+    duration_days: number;
+    attachments?: JobQuoteAttachment[];
+  }
+) {
+  return apiFetch<{ quote: JobQuote; message: ChatMessage }>(`/api/conversations/${conversationId}/quotes`, {
+    token,
+    method: "POST",
+    body: { ...payload, attachments: payload.attachments ?? [] }
+  });
+}
+
+export function acceptConversationQuote(token: string, conversationId: string, quoteId: string) {
+  return apiFetch<{ quote: JobQuote; message?: ChatMessage }>(`/api/conversations/${conversationId}/quotes/${quoteId}/accept`, {
+    token,
+    method: "POST",
+    body: {}
+  });
+}
+
+export function requestConversationQuoteReview(token: string, conversationId: string, quoteId: string, note: string) {
+  return apiFetch<{ quote: JobQuote; message?: ChatMessage }>(`/api/conversations/${conversationId}/quotes/${quoteId}/review`, {
+    token,
+    method: "POST",
+    body: { note }
   });
 }
 

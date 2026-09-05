@@ -16,8 +16,11 @@ export function useConversations(jobId?: string | null) {
     setLoading(true);
     setError("");
     getConversations(token, jobId)
-      .then((data) => setConversations(data.conversations))
-      .catch((err) => setError(err instanceof Error ? err.message : "Could not load chats"))
+      .then((data) => setConversations(Array.isArray(data.conversations) ? data.conversations : []))
+      .catch((err) => {
+        setConversations([]);
+        setError(err instanceof Error ? err.message : "Could not load chats");
+      })
       .finally(() => setLoading(false));
   }, [jobId, token]);
 

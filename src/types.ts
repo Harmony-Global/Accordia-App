@@ -74,6 +74,8 @@ export type Job = {
   title: string;
   description: string;
   currency: string;
+  price_type?: "fixed" | "negotiable" | string;
+  price_amount?: number | null;
   location: string | null;
   state: string | null;
   is_remote: boolean;
@@ -88,6 +90,34 @@ export type Job = {
   client?: Pick<Profile, "id" | "first_name" | "last_name" | "phone_verified">;
   created_at: string;
   updated_at?: string;
+};
+
+export type JobQuoteAttachment = {
+  name: string;
+  type?: string | null;
+  size?: number | null;
+};
+
+export type JobQuote = {
+  id: string;
+  conversation_id: string;
+  job_id: string;
+  application_id: string;
+  client_id: string;
+  professional_id: string;
+  version: number;
+  status: "sent" | "review_requested" | "accepted" | "superseded" | string;
+  project_title: string;
+  project_description: string;
+  total_budget: number;
+  duration_days: number;
+  attachments: JobQuoteAttachment[];
+  review_note?: string | null;
+  accepted_at?: string | null;
+  review_requested_at?: string | null;
+  created_at: string;
+  updated_at: string;
+  job?: Pick<Job, "id" | "title" | "price_type" | "price_amount" | "currency"> | null;
 };
 
 export type ProposalAttachment = {
@@ -125,7 +155,10 @@ export type Application = {
   chat_invited_by?: string | null;
   chat_accepted_at?: string | null;
   chat_accepted_by?: string | null;
-  status: "pending" | "reviewed" | "shortlisted" | "selected" | "awarded" | "not_awarded" | "rejected" | string;
+  status: "pending" | "reviewed" | "shortlisted" | "selected" | "awarded" | "not_awarded" | "rejected" | "withdrawn" | string;
+  deleted_at?: string | null;
+  deleted_by?: string | null;
+  deleted_reason?: string | null;
   created_at: string;
   updated_at: string;
   job?: Job;
@@ -189,7 +222,7 @@ export type JobConversation = {
   review?: ConversationReview | ConversationReview[] | null;
   created_at: string;
   updated_at: string;
-  job?: Pick<Job, "id" | "title" | "status" | "category" | "is_remote" | "description" | "number_of_professionals" | "location" | "state"> | null;
+  job?: Pick<Job, "id" | "title" | "status" | "category" | "is_remote" | "description" | "number_of_professionals" | "location" | "state" | "price_type" | "price_amount" | "currency"> | null;
   application?: Pick<Application, "id" | "status" | "pitch" | "proposed_rate" | "estimated_days" | "reference_image_urls" | "proposal_attachments"> | null;
   client?: Pick<Profile, "id" | "first_name" | "last_name" | "avatar_url" | "phone_verified"> | null;
   professional?: Pick<Profile, "id" | "first_name" | "last_name" | "avatar_url" | "phone_verified"> & {

@@ -269,6 +269,7 @@ function CalendarTimeControl({
 }
 
 export function ScheduleServiceCalendar({
+  align = "center",
   busy,
   currentEndDate,
   currentScheduleLabel,
@@ -294,6 +295,7 @@ export function ScheduleServiceCalendar({
   startPeriod,
   startTime
 }: {
+  align?: "center" | "top";
   busy: boolean;
   currentEndDate?: Date | null;
   currentScheduleLabel?: string;
@@ -323,6 +325,7 @@ export function ScheduleServiceCalendar({
   const today = useMemo(() => dateOnly(new Date()), []);
   const [calendarView, setCalendarView] = useState<"days" | "months" | "years">("days");
   const [yearPageStart, setYearPageStart] = useState(() => yearPageFor(month.getFullYear()));
+  const fixedPanelAlignment = align === "top" ? "items-start" : "items-start sm:items-center";
 
   function moveMonth(direction: -1 | 1) {
     onMonthChange(new Date(month.getFullYear(), month.getMonth() + direction, 1));
@@ -347,7 +350,7 @@ export function ScheduleServiceCalendar({
 
   return (
     <div className={`${placement === "fixed" ? "fixed z-[90] bg-black/20" : "absolute z-30 bg-white/45"} inset-0 overflow-y-auto p-3 backdrop-blur-[1px]`}>
-      <div className="flex min-h-full items-start justify-center py-3 sm:items-center">
+      <div className={`flex min-h-full justify-center ${placement === "fixed" ? fixedPanelAlignment : "items-start sm:items-center"} ${align === "top" ? "py-4 sm:py-6" : "py-3"}`}>
         <div className="max-h-[calc(100dvh-48px)] w-full max-w-[620px] overflow-y-auto overflow-x-hidden rounded-[8px] border border-[#9fcbd8] bg-white p-4 shadow-[0_14px_45px_rgba(15,23,42,0.18)] sm:p-6">
           <div className="flex items-center justify-between gap-4 border-b border-[#b8d4dc] pb-4">
             <h2 className="text-[17px] font-semibold text-[#4f4f4f]">{title}</h2>
