@@ -33,6 +33,10 @@ export function getMyApplications(token: string) {
   return apiFetch<{ applications: Application[] }>("/api/applications/me", { token });
 }
 
+export function getApplication(token: string, applicationId: string) {
+  return apiFetch<{ application: Application }>(`/api/applications/${applicationId}`, { token, cacheTtlMs: 0 });
+}
+
 export function getJobApplications(token: string, jobId: string) {
   return apiFetch<{ applications: Application[] }>(`/api/jobs/${jobId}/applications`, { token });
 }
