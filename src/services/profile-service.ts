@@ -76,3 +76,9 @@ export function uploadProfessionalServiceImage(token: string, file: File) {
   formData.append("file", file);
   return apiFormData<{ image_url: string; path: string }>("/api/professional/services/upload", formData, token);
 }
+
+export function uploadProfileAvatar(token: string, file: File) {
+  const formData = new FormData();
+  formData.append("file", file);
+  return apiFormData<{ avatar_url: string; path: string }>("/api/profile/avatar", formData, token);
+}
