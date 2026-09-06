@@ -67,6 +67,24 @@ export function requestConversationQuoteReview(token: string, conversationId: st
   });
 }
 
+export function uploadConversationQuoteAttachment(token: string, conversationId: string, quoteId: string, file: File) {
+  const formData = new FormData();
+  formData.append("file", file);
+
+  return apiFormData<{ attachment: JobQuoteAttachment; quote: JobQuote }>(
+    `/api/conversations/${conversationId}/quotes/${quoteId}/attachments`,
+    formData,
+    token
+  );
+}
+
+export function getConversationQuoteAttachmentAccess(token: string, conversationId: string, quoteId: string, attachmentId: string) {
+  return apiFetch<{ attachment: JobQuoteAttachment; signed_url: string; expires_in: number }>(
+    `/api/conversations/${conversationId}/quotes/${quoteId}/attachments/${attachmentId}`,
+    { token }
+  );
+}
+
 export function hireConversationProfessional(token: string, conversationId: string) {
   return apiFetch<{ conversation: JobConversation; application: JobConversation["application"] }>(`/api/conversations/${conversationId}/hire`, {
     token,

@@ -93,9 +93,13 @@ export type Job = {
 };
 
 export type JobQuoteAttachment = {
+  id?: string;
   name: string;
   type?: string | null;
   size?: number | null;
+  path?: string;
+  bucket?: string;
+  created_at?: string;
 };
 
 export type JobQuote = {

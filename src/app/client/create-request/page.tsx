@@ -147,6 +147,18 @@ export default function NewJobPage() {
           </label>
 
           <label className="block text-sm font-medium leading-6 text-[#585858]">
+            Price
+            <input
+              className="mt-2 h-12 w-full rounded-[10px] border border-[#d0d0d0] bg-white px-4 text-sm text-ink outline-none transition hover:border-[#a4a4a4] focus:border-brand focus:ring-4 focus:ring-teal-100"
+              min={0}
+              name="price_amount"
+              placeholder="Enter amount"
+              required
+              type="number"
+            />
+          </label>
+
+          <label className="block text-sm font-medium leading-6 text-[#585858]">
             Price Type
             <CustomSelect
               className="mt-2"
@@ -158,18 +170,6 @@ export default function NewJobPage() {
               <option value="negotiable">Negotiable</option>
               <option value="fixed">Fixed</option>
             </CustomSelect>
-          </label>
-
-          <label className="block text-sm font-medium leading-6 text-[#585858]">
-            {priceType === "fixed" ? "Fixed Price" : "Starting Price"}
-            <input
-              className="mt-2 h-12 w-full rounded-[10px] border border-[#d0d0d0] bg-white px-4 text-sm text-ink outline-none transition hover:border-[#a4a4a4] focus:border-brand focus:ring-4 focus:ring-teal-100"
-              min={0}
-              name="price_amount"
-              placeholder="Enter amount"
-              required
-              type="number"
-            />
           </label>
 
           <label className="block text-sm font-medium leading-6 text-[#585858]">

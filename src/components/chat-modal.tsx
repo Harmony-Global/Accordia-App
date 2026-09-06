@@ -1,13 +1,13 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { AlertCircle, CalendarDays, CheckCircle2, ChevronLeft, ChevronRight, Download, FileText, Send, X } from "lucide-react";
+import { AlertCircle, CalendarDays, Check, CheckCheck, CheckCircle2, ChevronLeft, ChevronRight, Download, FileText, Send, X } from "lucide-react";
 import { Button, CustomSelect, IconButton, ProfileAvatar, Spinner, SurfaceModal } from "@/components/ui";
 import { ScheduleServiceCalendar as SharedScheduleServiceCalendar } from "@/components/schedule-service-calendar";
 import { useToast } from "@/components/toast";
 import { useAuth, useRequireAuth } from "@/hooks/use-auth";
 import { requestAppointmentReschedule, respondAppointmentReschedule } from "@/services/appointment-service";
-import { acceptConversationQuote, getConversationMessages, getConversationQuotes, hireConversationProfessional, markConversationRead, requestConversationQuoteReview, sendConversationMessage, sendConversationQuote, setConversationWorkSchedule } from "@/services/conversation-service";
+import { acceptConversationQuote, getConversationMessages, getConversationQuoteAttachmentAccess, getConversationQuotes, hireConversationProfessional, markConversationRead, requestConversationQuoteReview, sendConversationMessage, sendConversationQuote, setConversationWorkSchedule, uploadConversationQuoteAttachment } from "@/services/conversation-service";
 import { getInquiryMessages, markInquiryRead, sendInquiryMessage } from "@/services/inquiry-service";
 import type { Appointment, AppointmentRescheduleRequest, ChatMessage, JobConversation, JobQuote, ProfessionalInquiry, Profile } from "@/types";
 
@@ -44,6 +44,22 @@ type QuoteFormState = {
   durationDays: string;
 };
 
+const MAX_QUOTE_ATTACHMENT_BYTES = 5 * 1024 * 1024;
+const MAX_QUOTE_ATTACHMENT_TOTAL_BYTES = 25 * 1024 * 1024;
+const MAX_QUOTE_ATTACHMENTS = 5;
+const supportedQuoteAttachmentTypes = new Set([
+  "application/pdf",
+  "text/csv",
+  "application/csv",
+  "application/vnd.ms-excel",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  "application/msword",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "image/jpeg",
+  "image/png",
+  "image/webp"
+]);
+
 function containsContactInfo(value: string) {
   if (EMAIL_PATTERN.test(value) || URL_PATTERN.test(value)) return true;
   const candidates = value.match(PHONE_PATTERN) ?? [];
@@ -60,6 +76,13 @@ function formatMoney(value?: number | string | null, currency = "NGN") {
   const amount = quoteAmount(value);
   if (amount === null) return "Not provided";
   return `${currency.toUpperCase()} ${amount.toLocaleString()}`;
+}
+
+function formatFileSize(size?: number | null) {
+  const value = Number(size ?? 0);
+  if (!Number.isFinite(value) || value <= 0) return "";
+  if (value >= 1024 * 1024) return `${(value / (1024 * 1024)).toFixed(1)}mb`;
+  return `${Math.max(1, Math.round(value / 1024))}kb`;
 }
 
 function quoteStatusLabel(status: string) {
@@ -581,10 +604,12 @@ export function ChatModal({
   const [rescheduleBusy, setRescheduleBusy] = useState(false);
   const [quotes, setQuotes] = useState<JobQuote[]>([]);
   const [quoteFormOpen, setQuoteFormOpen] = useState(false);
+  const [quoteDetailsOpen, setQuoteDetailsOpen] = useState(false);
   const [quoteForm, setQuoteForm] = useState<QuoteFormState>(() => defaultQuoteForm());
   const [quoteFiles, setQuoteFiles] = useState<File[]>([]);
   const [quoteReviewNote, setQuoteReviewNote] = useState("");
   const [quoteBusy, setQuoteBusy] = useState("");
+  const [dismissedQuoteNoticeId, setDismissedQuoteNoticeId] = useState("");
 
   useEffect(() => {
     setCurrentConversation(conversation);
@@ -592,7 +617,9 @@ export function ChatModal({
     setContactWarning("");
     setPaymentNoticeOpen(false);
     setQuoteFormOpen(false);
+    setQuoteDetailsOpen(false);
     setQuoteReviewNote("");
+    setDismissedQuoteNoticeId("");
   }, [conversation]);
 
   useEffect(() => {
@@ -767,9 +794,35 @@ export function ChatModal({
     setQuoteFormOpen(true);
   }
 
+  function readQuoteFiles(files: FileList | null, currentFiles: File[]) {
+    const incomingFiles = Array.from(files ?? []);
+    if (incomingFiles.length === 0) return currentFiles;
+
+    const nextFiles = [...currentFiles];
+    for (const file of incomingFiles) {
+      if (!supportedQuoteAttachmentTypes.has(file.type)) throw new Error("Only PDF, CSV, Excel, Word, JPEG, PNG, and WebP files are supported.");
+      if (file.size === 0 || file.size > MAX_QUOTE_ATTACHMENT_BYTES) throw new Error("Each quote attachment must be between 1 byte and 5MB.");
+      if (nextFiles.some((item) => item.name === file.name && item.size === file.size && item.lastModified === file.lastModified)) continue;
+      nextFiles.push(file);
+    }
+
+    if (nextFiles.length > MAX_QUOTE_ATTACHMENTS) throw new Error(`You can attach up to ${MAX_QUOTE_ATTACHMENTS} quote files.`);
+    const totalSize = nextFiles.reduce((sum, file) => sum + file.size, 0);
+    if (totalSize > MAX_QUOTE_ATTACHMENT_TOTAL_BYTES) throw new Error("Quote attachments cannot exceed 25MB total.");
+
+    return nextFiles;
+  }
+
   function changeQuoteFiles(files: FileList | null) {
-    const nextFiles = Array.from(files ?? []).slice(0, 5);
-    setQuoteFiles(nextFiles);
+    try {
+      setQuoteFiles((current) => readQuoteFiles(files, current));
+    } catch (err) {
+      showToast({ tone: "error", title: "Attachment upload failed", body: err instanceof Error ? err.message : "Could not add quote attachments" });
+    }
+  }
+
+  function removeQuoteFile(index: number) {
+    setQuoteFiles((current) => current.filter((_, itemIndex) => itemIndex !== index));
   }
 
   async function submitQuote() {
@@ -792,11 +845,25 @@ export function ChatModal({
         project_description: quoteForm.projectDescription,
         total_budget: budget,
         duration_days: duration,
-        attachments: quoteFiles.map((file) => ({ name: file.name, type: file.type || null, size: file.size }))
+        attachments: []
       });
-      setQuotes((current) => [data.quote, ...current.map((quote) => ["sent", "review_requested"].includes(quote.status) ? { ...quote, status: "superseded" } : quote)]);
+      let savedQuote = data.quote;
+      try {
+        for (const file of quoteFiles) {
+          const uploaded = await uploadConversationQuoteAttachment(token, jobConversation.id, savedQuote.id, file);
+          savedQuote = uploaded.quote;
+        }
+      } catch (uploadError) {
+        showToast({
+          tone: "error",
+          title: "Quote sent, attachments incomplete",
+          body: uploadError instanceof Error ? uploadError.message : "Some quote attachments could not be uploaded."
+        });
+      }
+      setQuotes((current) => [savedQuote, ...current.map((quote) => ["sent", "review_requested"].includes(quote.status) ? { ...quote, status: "superseded" } : quote)]);
       setMessages((current) => [...current, data.message]);
       setQuoteFormOpen(false);
+      setQuoteDetailsOpen(true);
       setQuoteReviewNote("");
       showToast({ tone: "success", title: "Quote sent", body: "The client can now review it in chat." });
     } catch (err) {
@@ -856,6 +923,23 @@ export function ChatModal({
     link.download = `${quote.project_title.replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "").toLowerCase() || "quote"}.accordia.txt`;
     link.click();
     URL.revokeObjectURL(url);
+  }
+
+  async function downloadQuoteAttachment(quote: JobQuote, attachment: JobQuote["attachments"][number]) {
+    if (!token || !attachment.id) {
+      downloadQuote(quote);
+      return;
+    }
+
+    try {
+      const data = await getConversationQuoteAttachmentAccess(token, quote.conversation_id, quote.id, attachment.id);
+      const link = document.createElement("a");
+      link.href = data.signed_url;
+      link.download = attachment.name;
+      link.click();
+    } catch (err) {
+      showToast({ tone: "error", title: "Download failed", body: err instanceof Error ? err.message : "Could not download quote attachment" });
+    }
   }
 
   function formatRescheduleRange(request: Pick<AppointmentRescheduleRequest, "proposed_starts_at" | "proposed_ends_at">) {
@@ -1001,6 +1085,72 @@ export function ChatModal({
             startTime={scheduleStartTime}
           />
         ) : null}
+        {quoteDetailsOpen && activeQuote ? (
+          <div className="fixed inset-0 z-[100] flex items-start justify-center overflow-y-auto bg-black/25 p-3 sm:p-6">
+            <section className="relative mt-4 w-full max-w-4xl rounded-[8px] border border-line bg-white p-5 shadow-xl sm:p-7">
+              <button aria-label="Close quote details" className="absolute right-4 top-4 text-black transition hover:text-[#196c88]" onClick={() => setQuoteDetailsOpen(false)} type="button">
+                <X size={22} />
+              </button>
+              <div className="flex flex-col gap-4 border-b border-dashed border-[#a4a4a4] pb-5 sm:flex-row sm:items-start sm:justify-between">
+                <h2 className="pr-10 text-[20px] font-semibold text-[#5e5e5e] sm:text-[22px]">Quote For {activeQuote.project_title}</h2>
+                <div className="text-sm leading-6 text-[#a4a4a4] sm:text-right">
+                  <p>Created on {new Date(activeQuote.created_at).toLocaleString()}</p>
+                  <p>{quoteStatusLabel(activeQuote.status)}</p>
+                </div>
+              </div>
+              <div className="mt-8 space-y-5 text-sm leading-6 text-[#5e5e5e]">
+                <p><span className="text-[#a4a4a4]">Client:</span> {participantName(jobConversation?.client)}</p>
+                <div>
+                  <p className="text-[#a4a4a4]">Project Description</p>
+                  <p className="mt-2 whitespace-pre-line">{activeQuote.project_description}</p>
+                </div>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <p><span className="text-[#a4a4a4]">Total Project Budget:</span> {formatMoney(activeQuote.total_budget, quoteCurrency)}</p>
+                  <p><span className="text-[#a4a4a4]">Project Duration:</span> {activeQuote.duration_days} day{activeQuote.duration_days === 1 ? "" : "s"}</p>
+                </div>
+                {activeQuote.review_note && activeQuote.status === "review_requested" ? (
+                  <p className="rounded-[6px] border border-[#f9d999] bg-[#fffbe6] p-3">{activeQuote.review_note}</p>
+                ) : null}
+                <div>
+                  <p className="font-semibold">Attachments</p>
+                  {(activeQuote.attachments ?? []).length > 0 ? (
+                    <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                      {(activeQuote.attachments ?? []).map((attachment, index) => (
+                        <button
+                          className="flex min-w-0 items-center justify-between gap-3 rounded-[5px] border border-line bg-white px-3 py-3 text-left transition hover:border-[#196c88]"
+                          key={attachment.id ?? `${attachment.name}-${index}`}
+                          onClick={() => downloadQuoteAttachment(activeQuote, attachment)}
+                          type="button"
+                        >
+                          <span className="flex min-w-0 items-center gap-3">
+                            <FileText className="shrink-0 text-[#f4a422]" size={24} />
+                            <span className="min-w-0">
+                              <span className="block truncate font-medium">{attachment.name}</span>
+                              <span className="text-xs text-muted">{formatFileSize(attachment.size)}</span>
+                            </span>
+                          </span>
+                          <Download className="shrink-0 text-[#196c88]" size={17} />
+                        </button>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="mt-2 text-sm text-muted">No quote attachments were submitted.</p>
+                  )}
+                </div>
+              </div>
+              <div className="mt-7 flex flex-wrap justify-end gap-3">
+                {canCreateQuote && activeQuote.status === "review_requested" ? <Button className="rounded-[5px] px-5" onClick={() => { setQuoteDetailsOpen(false); openQuoteForm(); }} type="button">Revise Quote</Button> : null}
+                {isClient && activeQuote.status === "sent" ? (
+                  <>
+                    <input className="min-h-10 min-w-[220px] flex-1 rounded-[6px] border border-line px-3 text-sm outline-none transition focus:border-[#196c88] focus:ring-4 focus:ring-teal-100 sm:flex-none" onChange={(event) => setQuoteReviewNote(event.target.value)} placeholder="Request a quote revision..." value={quoteReviewNote} />
+                    <Button className="h-10 rounded-[5px] px-4 py-0" disabled={quoteBusy === "review" || quoteReviewNote.trim().length < 3} onClick={requestQuoteReview} type="button" variant="secondary">{quoteBusy === "review" ? <Spinner className="h-4 w-4" /> : "Request revision"}</Button>
+                    <Button className="h-10 rounded-[5px] px-4 py-0" disabled={quoteBusy === "accept"} onClick={acceptQuote} type="button">{quoteBusy === "accept" ? <Spinner className="h-4 w-4" /> : "Accept Quote"}</Button>
+                  </>
+                ) : null}
+              </div>
+            </section>
+          </div>
+        ) : null}
         {quoteFormOpen && jobConversation ? (
           <div className="fixed inset-0 z-[100] flex items-start justify-center overflow-y-auto bg-black/25 p-3 sm:p-6">
             <section className="relative mt-4 w-full max-w-3xl rounded-[10px] border border-line bg-white p-5 shadow-xl sm:p-7">
@@ -1042,15 +1192,23 @@ export function ChatModal({
                   <span className="mt-2 flex min-h-[96px] cursor-pointer flex-col items-center justify-center rounded-[6px] border border-dashed border-[#b8d1da] px-4 text-center text-sm text-[#a4a4a4] transition hover:border-[#196c88]">
                     <span><span className="font-semibold text-[#196c88]">Click to upload</span> or Drag and drop file</span>
                     <span className="mt-1">Max file size: 5mb</span>
-                    <input className="sr-only" multiple onChange={(event) => changeQuoteFiles(event.target.files)} type="file" />
+                    <input className="sr-only" multiple onChange={(event) => { changeQuoteFiles(event.target.files); event.currentTarget.value = ""; }} type="file" />
                   </span>
                 </label>
                 {quoteFiles.length > 0 ? (
                   <div className="grid gap-2 sm:grid-cols-2">
-                    {quoteFiles.map((file) => (
-                      <div className="flex items-center gap-2 rounded-[6px] border border-line px-3 py-2 text-sm text-[#5e5e5e]" key={`${file.name}-${file.size}`}>
-                        <FileText className="shrink-0 text-[#196c88]" size={17} />
-                        <span className="truncate">{file.name}</span>
+                    {quoteFiles.map((file, index) => (
+                      <div className="flex min-w-0 items-center justify-between gap-2 rounded-[6px] border border-line px-3 py-2 text-sm text-[#5e5e5e]" key={`${file.name}-${file.size}-${file.lastModified}`}>
+                        <span className="flex min-w-0 items-center gap-2">
+                          <FileText className="shrink-0 text-[#196c88]" size={17} />
+                          <span className="min-w-0">
+                            <span className="block truncate">{file.name}</span>
+                            <span className="text-xs text-muted">{formatFileSize(file.size)}</span>
+                          </span>
+                        </span>
+                        <button aria-label={`Remove ${file.name}`} className="grid h-7 w-7 shrink-0 place-items-center rounded-full text-black transition hover:bg-slate-100 hover:text-red-700" onClick={() => removeQuoteFile(index)} type="button">
+                          <X size={14} />
+                        </button>
                       </div>
                     ))}
                   </div>
@@ -1063,42 +1221,6 @@ export function ChatModal({
                 </Button>
               </div>
             </section>
-          </div>
-        ) : null}
-        {jobConversation && activeQuote ? (
-          <div className={`m-4 mb-0 rounded-[8px] border-b-[3px] p-4 ${activeQuote.status === "accepted" ? "border-[#0fa269] bg-[#f3fef3]" : activeQuote.status === "review_requested" ? "border-[#f4a422] bg-[#fffbe6]" : "border-[#196c88] bg-[#f8fbfc]"}`}>
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-              <div className="min-w-0">
-                <p className="text-[15px] font-semibold text-[#5e5e5e] sm:text-[16px]">{activeQuote.project_title}</p>
-                <p className="mt-1 text-sm leading-5 text-[#757575]">{formatMoney(activeQuote.total_budget, quoteCurrency)} - {activeQuote.duration_days} day{activeQuote.duration_days === 1 ? "" : "s"} - {quoteStatusLabel(activeQuote.status)}</p>
-                {activeQuote.review_note && activeQuote.status === "review_requested" ? <p className="mt-2 text-sm leading-5 text-[#5e5e5e]">{activeQuote.review_note}</p> : null}
-              </div>
-              <div className="flex shrink-0 flex-wrap gap-2">
-                <Button className="h-10 rounded-[5px] px-3 py-0" onClick={() => downloadQuote(activeQuote)} type="button" variant="secondary"><Download size={16} /> Download</Button>
-                {isClient && activeQuote.status === "sent" ? <Button className="h-10 rounded-[5px] px-4 py-0" disabled={quoteBusy === "accept"} onClick={acceptQuote} type="button">{quoteBusy === "accept" ? <Spinner className="h-4 w-4" /> : "Accept"}</Button> : null}
-                {canCreateQuote && activeQuote.status === "review_requested" ? <Button className="h-10 rounded-[5px] px-4 py-0" onClick={openQuoteForm} type="button">Revise Quote</Button> : null}
-              </div>
-            </div>
-            {isClient && activeQuote.status === "sent" ? (
-              <div className="mt-3 grid gap-2 sm:grid-cols-[1fr_auto]">
-                <input className="min-h-10 rounded-[6px] border border-line px-3 text-sm outline-none transition focus:border-[#196c88] focus:ring-4 focus:ring-teal-100" onChange={(event) => setQuoteReviewNote(event.target.value)} placeholder="Request a quote review..." value={quoteReviewNote} />
-                <Button className="h-10 rounded-[5px] px-4 py-0" disabled={quoteBusy === "review" || quoteReviewNote.trim().length < 3} onClick={requestQuoteReview} type="button" variant="secondary">{quoteBusy === "review" ? <Spinner className="h-4 w-4" /> : "Request review"}</Button>
-              </div>
-            ) : null}
-          </div>
-        ) : null}
-        {canCreateQuote && !activeQuote ? (
-          <div className="m-4 mb-0 rounded-[8px] border-b-[3px] border-[#196c88] bg-[#f8fbfc] p-4">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <div className="flex min-w-0 items-start gap-3">
-                <FileText className="mt-0.5 shrink-0 text-[#196c88]" size={24} strokeWidth={1.8} />
-                <div>
-                  <p className="text-[15px] font-semibold text-[#5e5e5e] sm:text-[16px]">Create a quote</p>
-                  <p className="mt-1 text-sm leading-5 text-[#757575]">Send scope, budget, duration, and supporting attachment details before payment.</p>
-                </div>
-              </div>
-              <Button className="shrink-0 rounded-[5px] px-5" onClick={openQuoteForm} type="button">Create Quote</Button>
-            </div>
           </div>
         ) : null}
         {isClient && jobConversation && !hasUpfrontPayment && !acceptedQuote ? (
@@ -1196,13 +1318,46 @@ export function ChatModal({
                   <div className={`flex ${mine ? "justify-end" : "justify-start"}`} key={message.id}>
                     <div className={`max-w-[82%] rounded-lg px-4 py-3 text-sm leading-6 shadow-sm sm:max-w-[52%] ${mine ? "bg-brand text-white" : "border border-line bg-white text-ink"}`}>
                       <p>{message.body}</p>
-                      <p className={`mt-2 text-[11px] ${mine ? "text-white/75" : "text-muted"}`}>
-                        {new Date(message.created_at).toLocaleString()}
+                      <p className={`mt-2 flex items-center gap-1.5 text-[11px] ${mine ? "justify-end text-white/75" : "text-muted"}`}>
+                        <span>{new Date(message.created_at).toLocaleString()}</span>
+                        {mine ? message.is_read ? <CheckCheck size={14} /> : <Check size={14} /> : null}
                       </p>
                     </div>
                   </div>
                 );
               })}
+              {jobConversation && activeQuote ? (
+                <div className={`flex ${profile?.id === activeQuote.professional_id ? "justify-end" : "justify-start"}`}>
+                  <button
+                    className={`flex w-full max-w-[260px] items-center gap-3 rounded-lg px-4 py-3 text-left text-sm leading-5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md sm:max-w-[320px] ${profile?.id === activeQuote.professional_id ? "bg-brand text-white" : "border border-line bg-white text-ink"}`}
+                    onClick={() => setQuoteDetailsOpen(true)}
+                    type="button"
+                  >
+                    <FileText className={profile?.id === activeQuote.professional_id ? "shrink-0 text-white" : "shrink-0 text-[#f4a422]"} size={26} />
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate font-semibold">Quote.accordia</span>
+                      <span className={profile?.id === activeQuote.professional_id ? "block text-white/80" : "block text-muted"}>
+                        {formatMoney(activeQuote.total_budget, quoteCurrency)}
+                      </span>
+                    </span>
+                    {profile?.id === activeQuote.professional_id ? <CheckCheck className="self-end text-white/80" size={15} /> : null}
+                  </button>
+                </div>
+              ) : null}
+              {jobConversation && activeQuote?.status === "accepted" && dismissedQuoteNoticeId !== activeQuote.id ? (
+                <p className="flex items-center justify-end gap-2 text-xs font-medium text-[#5e5e5e]">
+                  <Check className="text-[#0fa269]" size={15} />
+                  {participantName(jobConversation.client)} has accepted Quote
+                  <button className="font-semibold text-[#196c88]" onClick={() => setDismissedQuoteNoticeId(activeQuote.id)} type="button">Dismiss</button>
+                </p>
+              ) : null}
+              {jobConversation && activeQuote?.status === "review_requested" && dismissedQuoteNoticeId !== activeQuote.id ? (
+                <p className="flex items-center justify-end gap-2 text-xs font-medium text-[#5e5e5e]">
+                  <Check className="text-[#0fa269]" size={15} />
+                  {participantName(jobConversation.client)} has requested for quote revision
+                  {canCreateQuote ? <button className="font-semibold text-[#196c88]" onClick={openQuoteForm} type="button">Revise Quote</button> : null}
+                </p>
+              ) : null}
               {contactWarning ? (
                 <div className="flex justify-center sm:justify-end sm:pr-12">
                   <div className="relative w-full max-w-[560px] rounded-[10px] border border-red-100 border-b-[3px] border-b-red-700 bg-red-50 px-4 py-5 pr-11 text-[15px] font-medium leading-7 text-[#5e5e5e] shadow-sm sm:px-7 sm:py-6 sm:text-[18px]">
@@ -1273,15 +1428,45 @@ export function ChatModal({
               {sending ? <Spinner className="h-5 w-5 border-2" /> : <Send size={22} />}
             </Button>
           </div>
-          {(canRescheduleAppointment || canScheduleWork) && !latestPendingReschedule && !rescheduleOpen ? (
-            <button
-              className="mt-3 inline-flex min-h-10 items-center gap-2 rounded-[5px] border border-[#196c88] px-4 text-sm font-semibold text-[#196c88] transition hover:bg-[#f2f6f8]"
-              onClick={openRescheduleCalendar}
-              type="button"
-            >
-              <CalendarDays size={17} />
-              {canRescheduleAppointment ? "Re-schedule appointment" : jobConversation?.work_starts_at ? "Re-schedule Start Date" : "Schedule Start Date"}
-            </button>
+          {(jobConversation || canRescheduleAppointment || canScheduleWork) && !latestPendingReschedule && !rescheduleOpen ? (
+            <div className="mt-3 flex flex-wrap gap-2">
+              {canCreateQuote && !activeQuote ? (
+                <button
+                  className="inline-flex min-h-10 items-center gap-2 rounded-[5px] bg-[#196c88] px-4 text-sm font-semibold text-white transition hover:bg-[#125a73]"
+                  onClick={openQuoteForm}
+                  type="button"
+                >
+                  <FileText size={17} />
+                  Create Quote
+                </button>
+              ) : null}
+              {activeQuote ? (
+                <button
+                  className="inline-flex min-h-10 items-center gap-2 rounded-[5px] bg-[#196c88] px-4 text-sm font-semibold text-white transition hover:bg-[#125a73]"
+                  onClick={() => {
+                    if (canCreateQuote && activeQuote.status === "review_requested") {
+                      openQuoteForm();
+                      return;
+                    }
+                    setQuoteDetailsOpen(true);
+                  }}
+                  type="button"
+                >
+                  <FileText size={17} />
+                  {canCreateQuote && activeQuote.status === "review_requested" ? "Revise Quote" : "View Quote"}
+                </button>
+              ) : null}
+              {(canRescheduleAppointment || canScheduleWork) ? (
+                <button
+                  className="inline-flex min-h-10 items-center gap-2 rounded-[5px] border border-[#196c88] px-4 text-sm font-semibold text-[#196c88] transition hover:bg-[#f2f6f8]"
+                  onClick={openRescheduleCalendar}
+                  type="button"
+                >
+                  <CalendarDays size={17} />
+                  {canRescheduleAppointment ? "Re-schedule appointment" : jobConversation?.work_starts_at ? "Re-schedule Start Date" : "Schedule Start Date"}
+                </button>
+              ) : null}
+            </div>
           ) : null}
           {jobConversation ? (
             <div className="mt-4 flex items-start gap-3 text-sm font-medium leading-6 text-[#5e5e5e]">

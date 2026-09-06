@@ -57,16 +57,22 @@ function defaultProposalState(): ProposalFormState {
   return { pitch: "", proposedRate: "", estimatedDays: "5", proposedStartAt: "" };
 }
 
-function readProposalFiles(files: FileList | null) {
-  const nextFiles = Array.from(files ?? []);
-  if (nextFiles.length === 0) return [];
-  if (nextFiles.length > MAX_PROPOSAL_ATTACHMENTS) throw new Error(`You can attach up to ${MAX_PROPOSAL_ATTACHMENTS} proposal files.`);
-  const incomingSize = nextFiles.reduce((sum, file) => sum + file.size, 0);
-  if (incomingSize > MAX_PROPOSAL_ATTACHMENT_TOTAL_BYTES) throw new Error("Proposal attachments cannot exceed 25MB total.");
-  for (const file of nextFiles) {
+function readProposalFiles(files: FileList | null, currentFiles: File[] = []) {
+  const incomingFiles = Array.from(files ?? []);
+  if (incomingFiles.length === 0) return currentFiles;
+
+  const nextFiles = [...currentFiles];
+  for (const file of incomingFiles) {
     if (!supportedProposalAttachmentTypes.has(file.type)) throw new Error("Only PDF, CSV, Excel, Word, JPEG, PNG, and WebP files are supported.");
     if (file.size === 0 || file.size > MAX_PROPOSAL_ATTACHMENT_BYTES) throw new Error("Each proposal attachment must be between 1 byte and 5MB.");
+    if (nextFiles.some((item) => item.name === file.name && item.size === file.size && item.lastModified === file.lastModified)) continue;
+    nextFiles.push(file);
   }
+
+  if (nextFiles.length > MAX_PROPOSAL_ATTACHMENTS) throw new Error(`You can attach up to ${MAX_PROPOSAL_ATTACHMENTS} proposal files.`);
+  const totalSize = nextFiles.reduce((sum, file) => sum + file.size, 0);
+  if (totalSize > MAX_PROPOSAL_ATTACHMENT_TOTAL_BYTES) throw new Error("Proposal attachments cannot exceed 25MB total.");
+
   return nextFiles;
 }
 
@@ -681,7 +687,7 @@ function ProfessionalJobsContent() {
 
   function addProposalFiles(jobId: string, files: FileList | null) {
     try {
-      setProposalFilesByJob((current) => ({ ...current, [jobId]: readProposalFiles(files) }));
+      setProposalFilesByJob((current) => ({ ...current, [jobId]: readProposalFiles(files, current[jobId] ?? []) }));
     } catch (err) {
       showToast({ tone: "error", title: "Attachment upload failed", body: err instanceof Error ? err.message : "Could not add proposal attachments" });
     }
