@@ -14,6 +14,7 @@ import {
   deleteProfessionalService,
   updateMyProfile,
   updateProfessionalService,
+  uploadProfileAvatar,
   uploadProfessionalServiceImage
 } from "@/services/profile-service";
 import { confirmPhoneVerification, getMyVerifications, startPhoneVerification } from "@/services/verification-service";
@@ -87,6 +88,7 @@ export default function ProfilePage() {
   const [, setError] = useState("");
   const [devCode, setDevCode] = useState("");
   const [avatarPreview, setAvatarPreview] = useState("");
+  const [avatarUploading, setAvatarUploading] = useState(false);
 
   const professionalProfile = useMemo(() => getProfessionalProfile(profile), [profile]);
   const availableServiceCategories = useMemo(
@@ -177,36 +179,50 @@ export default function ProfilePage() {
     }
   }
 
-  function uploadAvatar(event: React.ChangeEvent<HTMLInputElement>) {
+  async function uploadAvatar(event: React.ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
     if (!file) return;
 
     setError("");
 
-    if (!file.type.startsWith("image/")) {
-      const message = "Choose an image file for your profile photo.";
+    if (!token) {
+      const message = "Sign in again before uploading a profile photo.";
+      setError(message);
+      showToast({ tone: "error", title: "Upload unavailable", body: message });
+      event.target.value = "";
+      return;
+    }
+
+    if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) {
+      const message = "Choose a JPEG, PNG, or WebP image for your profile photo.";
       setError(message);
       showToast({ tone: "error", title: "Invalid profile photo", body: message });
+      event.target.value = "";
       return;
     }
 
-    if (file.size > 750 * 1024) {
-      const message = "Choose an image smaller than 750KB for now.";
+    if (file.size > 2 * 1024 * 1024) {
+      const message = "Choose an image smaller than 2 MB.";
       setError(message);
       showToast({ tone: "error", title: "Image is too large", body: message });
+      event.target.value = "";
       return;
     }
 
-    const reader = new FileReader();
-    reader.onload = () => {
-      setAvatarPreview(typeof reader.result === "string" ? reader.result : "");
-    };
-    reader.onerror = () => {
-      const message = "Could not read that image. Try another file.";
+    setAvatarUploading(true);
+    try {
+      const data = await uploadProfileAvatar(token, file);
+      setAvatarPreview(data.avatar_url);
+      updateProfile({ avatar_url: data.avatar_url });
+      showToast({ tone: "success", title: "Profile photo uploaded" });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Could not upload profile photo";
       setError(message);
       showToast({ tone: "error", title: "Image upload failed", body: message });
-    };
-    reader.readAsDataURL(file);
+    } finally {
+      setAvatarUploading(false);
+      event.target.value = "";
+    }
   }
 
   async function sendOtp() {
@@ -384,13 +400,13 @@ export default function ProfilePage() {
                   Add a clear photo so people can recognize your account across jobs and messages.
                 </p>
                 <div className="mt-3 flex flex-wrap gap-2">
-                  <label className="inline-flex min-h-10 cursor-pointer items-center justify-center gap-2 rounded-md bg-brand px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:-translate-y-0.5 hover:bg-[#125A73] hover:shadow-md">
-                    <Camera size={16} />
-                    Upload image
-                    <input accept="image/*" className="sr-only" onChange={uploadAvatar} type="file" />
+                  <label className={`inline-flex min-h-10 items-center justify-center gap-2 rounded-md bg-brand px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:-translate-y-0.5 hover:bg-[#125A73] hover:shadow-md ${avatarUploading ? "pointer-events-none opacity-75" : "cursor-pointer"}`}>
+                    {avatarUploading ? <Spinner /> : <Camera size={16} />}
+                    {avatarUploading ? "Uploading" : "Upload image"}
+                    <input accept="image/jpeg,image/png,image/webp" className="sr-only" disabled={avatarUploading} onChange={uploadAvatar} type="file" />
                   </label>
                   {avatarPreview ? (
-                    <button className="rounded-md border border-line bg-white px-4 py-2 text-sm font-semibold text-ink hover:bg-slate-50" onClick={() => setAvatarPreview("")} type="button">
+                    <button className="rounded-md border border-line bg-white px-4 py-2 text-sm font-semibold text-ink hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60" disabled={avatarUploading} onClick={() => setAvatarPreview("")} type="button">
                       Remove
                     </button>
                   ) : null}
@@ -431,7 +447,7 @@ export default function ProfilePage() {
               </div>
             ) : null}
 
-            <Button className="mt-7" disabled={saving} type="submit">
+            <Button className="mt-7" disabled={saving || avatarUploading} type="submit">
               {saving ? <span className="inline-flex items-center gap-2"><Spinner /> Saving profile</span> : "Save profile"}
             </Button>
           </form>
