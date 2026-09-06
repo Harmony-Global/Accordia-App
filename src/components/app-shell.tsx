@@ -276,7 +276,7 @@ export function AppShell({
 
   const professionalMenuLinks = [
     { href: "/dashboard", label: "Home", icon: Home, active: pathname === "/dashboard" },
-    { href: "/professional/jobs", label: "Jobs", icon: BriefcaseBusiness, active: pathname.startsWith("/professional/jobs") },
+    { href: "/professional/jobs", label: "Service Requests", icon: BriefcaseBusiness, active: pathname.startsWith("/professional/jobs") },
     { href: "/professional/appointments", label: "Appointments", icon: CalendarDays, active: pathname.startsWith("/professional/appointments") },
     { href: "/professional/categories", label: "Categories", icon: Tags, active: pathname.startsWith("/professional/categories") }
   ];
@@ -284,7 +284,7 @@ export function AppShell({
   const modernMenuLinks = isProfessionalShell ? professionalMenuLinks : clientMenuLinks;
   const modernDesktopLinks = isProfessionalShell
     ? [
-        { href: "/professional/jobs", label: "Jobs", active: pathname.startsWith("/professional/jobs") },
+        { href: "/professional/jobs", label: "Service Requests", active: pathname.startsWith("/professional/jobs") },
         { href: "/professional/appointments", label: "Appointments", active: pathname.startsWith("/professional/appointments") },
         { href: "/professional/categories", label: "Categories", active: pathname.startsWith("/professional/categories") }
       ]
