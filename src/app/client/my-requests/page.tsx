@@ -11,7 +11,7 @@ import { useRequireAuth } from "@/hooks/use-auth";
 import { useConversations } from "@/hooks/use-conversations";
 import { useClientJobs, useJobEngagement } from "@/hooks/use-jobs";
 import { confirmConversationCompletion, getConversationDeliverableAccess, makeConversationFinalPayment, requestConversationRevision, reviewConversationProfessional } from "@/services/conversation-service";
-import { getApplicationAttachmentAccess, getJobApplications } from "@/services/job-service";
+import { getApplication, getApplicationAttachmentAccess, getJobApplications } from "@/services/job-service";
 import { getNotifications, markNotificationRead } from "@/services/notification-service";
 import type { Application, ConversationReview, Job, JobApplicationSummary, JobConversation, Notification, ProfessionalProfile, ProfessionalService, ProposalAttachment } from "@/types";
 
@@ -68,21 +68,57 @@ function getApplicantProfile(application: Application): ProfessionalProfile | nu
   return Array.isArray(profiles) ? profiles[0] ?? null : profiles ?? null;
 }
 
-function ProfessionalProfileModal({ application, onClose }: { application: Application; onClose: () => void }) {
+function hasApplicantServiceDetails(application: Application) {
   const professionalProfile = getApplicantProfile(application);
-  const services = getApplicantServices(application);
+  return Array.isArray(professionalProfile?.professional_services);
+}
+
+function ProfessionalProfileModal({ application, onClose }: { application: Application; onClose: () => void }) {
+  const token = useRequireAuth();
+  const [profileApplication, setProfileApplication] = useState(application);
+  const [loadingDetails, setLoadingDetails] = useState(false);
+  const [loadedDetailsApplicationId, setLoadedDetailsApplicationId] = useState("");
+  const professionalProfile = getApplicantProfile(profileApplication);
+  const services = getApplicantServices(profileApplication);
   const categories = professionalProfile?.professional_categories?.map((item) => item.category).filter(Boolean) ?? [];
+
+  useEffect(() => {
+    setProfileApplication(application);
+    setLoadedDetailsApplicationId("");
+  }, [application]);
+
+  useEffect(() => {
+    if (!token || hasApplicantServiceDetails(profileApplication) || loadedDetailsApplicationId === profileApplication.id) return;
+
+    let cancelled = false;
+    setLoadingDetails(true);
+    getApplication(token, profileApplication.id)
+      .then((data) => {
+        if (!cancelled) setProfileApplication(data.application);
+      })
+      .catch(() => undefined)
+      .finally(() => {
+        if (!cancelled) {
+          setLoadedDetailsApplicationId(profileApplication.id);
+          setLoadingDetails(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [loadedDetailsApplicationId, profileApplication, token]);
 
   return (
     <div className="fixed inset-0 z-[95] flex items-start justify-center overflow-y-auto bg-black/10 p-3 backdrop-blur-[2px] sm:p-4">
       <section className="mt-2 max-h-[92vh] w-full max-w-3xl overflow-y-auto rounded-[10px] border border-line bg-white p-4 shadow-xl sm:mt-4 sm:p-5">
         <div className="flex items-start justify-between gap-4">
           <div className="flex min-w-0 items-center gap-3">
-            <PersonAvatar avatarUrl={application.professional?.avatar_url} />
+            <PersonAvatar avatarUrl={profileApplication.professional?.avatar_url} />
             <div className="min-w-0">
               <p className="text-sm font-medium text-brand">Professional profile</p>
               <h2 className="truncate text-xl font-semibold text-ink">
-                {application.professional?.first_name} {application.professional?.last_name}
+                {profileApplication.professional?.first_name} {profileApplication.professional?.last_name}
               </h2>
             </div>
           </div>
@@ -95,7 +131,7 @@ function ProfessionalProfileModal({ application, onClose }: { application: Appli
           <div className="rounded-md border border-line bg-slate-50 p-3">
             <ShieldCheck className="text-brand" size={18} />
             <p className="mt-2 text-sm font-semibold text-ink">Verification</p>
-            <p className="mt-1 text-sm text-muted">{application.professional?.phone_verified ? "Phone verified" : "Phone not verified"}</p>
+            <p className="mt-1 text-sm text-muted">{profileApplication.professional?.phone_verified ? "Phone verified" : "Phone not verified"}</p>
           </div>
           <div className="rounded-md border border-line bg-slate-50 p-3">
             <Clock3 className="text-brand" size={18} />
@@ -131,13 +167,14 @@ function ProfessionalProfileModal({ application, onClose }: { application: Appli
 
         <section className="mt-5">
           <h3 className="font-semibold text-ink">Application references</h3>
-          <References application={application} />
-          {(application.reference_image_urls ?? []).length === 0 ? <p className="mt-2 text-sm text-muted">No references attached.</p> : null}
+          <References application={profileApplication} />
+          {(profileApplication.reference_image_urls ?? []).length === 0 ? <p className="mt-2 text-sm text-muted">No references attached.</p> : null}
         </section>
 
         <section className="mt-5">
           <h3 className="font-semibold text-ink">Services and products</h3>
-          {services.length === 0 ? <p className="mt-2 text-sm text-muted">No active offerings yet.</p> : null}
+          {loadingDetails ? <p className="mt-2 inline-flex items-center gap-2 text-sm text-muted"><Spinner className="h-4 w-4" /> Loading offerings</p> : null}
+          {!loadingDetails && services.length === 0 ? <p className="mt-2 text-sm text-muted">No active offerings yet.</p> : null}
           <div className="mt-3 grid gap-3 sm:grid-cols-2">
             {services.map((service) => (
               <article className="rounded-md border border-line bg-white p-3" key={service.id}>

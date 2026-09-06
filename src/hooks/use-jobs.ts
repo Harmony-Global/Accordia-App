@@ -37,8 +37,9 @@ export function useClientJobs() {
     setError("");
     getClientJobs(token)
       .then((data) => {
-        cachedClientJobs = data.jobs;
-        setJobs(data.jobs);
+        const jobs = Array.isArray(data.jobs) ? data.jobs : [];
+        cachedClientJobs = jobs;
+        setJobs(jobs);
       })
       .catch((err) => setError(err instanceof Error ? err.message : "Could not load jobs"))
       .finally(() => {
@@ -79,8 +80,9 @@ export function useMatchedJobs() {
     if (cachedMatchedJobs.length === 0) setLoading(true);
     getMatchedJobs(token)
       .then((data) => {
-        cachedMatchedJobs = data.jobs;
-        setJobs(data.jobs);
+        const jobs = Array.isArray(data.jobs) ? data.jobs : [];
+        cachedMatchedJobs = jobs;
+        setJobs(jobs);
       })
       .catch((err) => setError(err instanceof Error ? err.message : "Could not load matched jobs"))
       .finally(() => setLoading(false));
@@ -107,8 +109,9 @@ export function useMyApplications() {
     if (cachedMyApplications.length === 0) setLoading(true);
     getMyApplications(token)
       .then((data) => {
-        cachedMyApplications = data.applications;
-        setApplications(data.applications);
+        const applications = Array.isArray(data.applications) ? data.applications : [];
+        cachedMyApplications = applications;
+        setApplications(applications);
       })
       .catch((err) => setError(err instanceof Error ? err.message : "Could not load applications"))
       .finally(() => setLoading(false));
@@ -144,9 +147,9 @@ export function useJobEngagement(jobId: string | null) {
     setError("");
     Promise.all([getJobApplications(token, jobId), getJobViews(token, jobId), getConversations(token, jobId)])
       .then(([applicationData, viewData, conversationData]) => {
-        setApplications(applicationData.applications);
-        setViews(viewData.views);
-        setConversations(conversationData.conversations);
+        setApplications(Array.isArray(applicationData.applications) ? applicationData.applications : []);
+        setViews(Array.isArray(viewData.views) ? viewData.views : []);
+        setConversations(Array.isArray(conversationData.conversations) ? conversationData.conversations : []);
       })
       .catch((err) => setError(err instanceof Error ? err.message : "Could not load job activity"))
       .finally(() => setLoading(false));
@@ -161,8 +164,8 @@ export function useJobEngagement(jobId: string | null) {
       getJobApplications(token, jobId),
       getConversations(token, jobId)
     ]);
-    setApplications(applicationData.applications);
-    setConversations(conversationData.conversations);
+    setApplications(Array.isArray(applicationData.applications) ? applicationData.applications : []);
+    setConversations(Array.isArray(conversationData.conversations) ? conversationData.conversations : []);
     return data;
   }
 
