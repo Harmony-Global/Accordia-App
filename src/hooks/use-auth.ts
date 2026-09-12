@@ -42,7 +42,7 @@ export function useLoginAction() {
 
   return async (payload: LoginPayload) => {
     const data = await login(payload);
-    setSession(data.session.access_token, data.profile.role, data.app_session_id, data.profile);
+    setSession(data.session.access_token, data.profile.role, data.app_session_id, data.profile, data.session.refresh_token);
     router.push("/dashboard");
   };
 }
@@ -54,7 +54,7 @@ export function useRegisterAction() {
   return async (payload: RegisterPayload) => {
     const data = await register(payload);
     if (data.session?.access_token && data.app_session_id) {
-      setSession(data.session.access_token, data.user.role, data.app_session_id, null);
+      setSession(data.session.access_token, data.user.role, data.app_session_id, null, data.session.refresh_token);
       router.push(data.user.role === "professional" ? "/professional/categories" : "/dashboard");
       return;
     }

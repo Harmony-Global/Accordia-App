@@ -2,7 +2,7 @@
 
 import { Suspense, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { CalendarDays, CheckCircle2, Clock3, Download, Eye, FileText, MessageCircle, Save, Search, Send, Trash2, Undo2, X } from "lucide-react";
+import { BriefcaseBusiness, CalendarDays, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, Clock3, Download, Eye, FileText, MapPin, MessageCircle, Save, Search, Send, Trash2, Undo2, X } from "lucide-react";
 import { AppShell, EmptyState } from "@/components/app-shell";
 import { ChatModal } from "@/components/chat-modal";
 import {
@@ -20,6 +20,9 @@ import { useRequireAuth } from "@/hooks/use-auth";
 import { useMatchedJobs, useMyApplications } from "@/hooks/use-jobs";
 import { getProfessionalInquiries } from "@/services/inquiry-service";
 import {
+  uploadConversationDeliverable
+} from "@/services/conversation-service";
+import {
   acceptApplicationInvite,
   deleteApplication,
   getApplicationAttachmentAccess,
@@ -33,6 +36,8 @@ import type { Application, Job, JobConversation, ProfessionalInquiry, ProposalAt
 const MAX_PROPOSAL_ATTACHMENT_BYTES = 5 * 1024 * 1024;
 const MAX_PROPOSAL_ATTACHMENT_TOTAL_BYTES = 25 * 1024 * 1024;
 const MAX_PROPOSAL_ATTACHMENTS = 5;
+const MATCHED_REQUESTS_PAGE_SIZE = 2;
+const APPLICATION_PREVIEW_LIMIT = 3;
 const supportedProposalAttachmentTypes = new Set([
   "application/pdf",
   "text/csv",
@@ -51,6 +56,20 @@ type ProposalFormState = {
   proposedRate: string;
   estimatedDays: string;
   proposedStartAt: string;
+};
+
+type ProfessionalRequestFilter = "service" | "active" | "completed" | "rejected";
+type ConversationGroup = {
+  jobId: string;
+  job?: Job | null;
+  conversations: JobConversation[];
+};
+
+const professionalRequestFilterLabels: Record<ProfessionalRequestFilter, string> = {
+  service: "Service Requests/Applications",
+  active: "Active Jobs",
+  completed: "Completed",
+  rejected: "Rejected"
 };
 
 function defaultProposalState(): ProposalFormState {
@@ -85,6 +104,10 @@ function formatCurrency(value?: number | null) {
   return value ? `#${value.toLocaleString()}` : "Not provided";
 }
 
+function formatPaymentAmount(value?: number | null) {
+  return value ? `#${value.toLocaleString()}` : "Pending";
+}
+
 function jobPriceAmount(job?: Pick<Job, "price_amount"> | null) {
   const amount = Number(job?.price_amount);
   return Number.isFinite(amount) ? amount : null;
@@ -110,6 +133,42 @@ function formatDateTime(value?: string | null) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "Not provided";
   return date.toLocaleString(undefined, { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" });
+}
+
+function formatDisplayDate(value?: string | null) {
+  if (!value) return "Not available yet";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "Not available yet";
+  return date.toLocaleString(undefined, { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" });
+}
+
+function activeStartedDate(conversation: JobConversation) {
+  return conversation.work_starts_at ?? conversation.upfront_payment_made_at ?? conversation.updated_at ?? conversation.created_at;
+}
+
+function expectedCompletionDate(conversation: JobConversation) {
+  if (conversation.work_ends_at) return conversation.work_ends_at;
+  const startedAt = activeStartedDate(conversation);
+  const days = conversation.application?.estimated_days;
+  if (!startedAt || !days) return null;
+
+  const date = new Date(startedAt);
+  if (Number.isNaN(date.getTime())) return null;
+  date.setDate(date.getDate() + days);
+  return date.toISOString();
+}
+
+function activeWorkState(conversation: JobConversation) {
+  const status = (conversation.work_status ?? "in_progress").toLowerCase();
+  if (status === "completed") return { label: "Completed", colorClass: "text-[#0fa269]", stepTone: "green" as const };
+  if (status === "revision_requested") return { label: "Revision", colorClass: "text-[#f4a422]", stepTone: "green" as const };
+  if (status === "submitted") return { label: "Submitted", colorClass: "text-[#f4a422]", stepTone: "amber" as const };
+  return { label: "In progress", colorClass: "text-[#f4a422]", stepTone: "amber" as const };
+}
+
+function finalPaymentAmount(conversation: JobConversation) {
+  const amount = conversation.application?.proposed_rate ?? 0;
+  return amount > 0 ? Math.round(amount / 2) : null;
 }
 
 function dateTimeInputValue(value?: string | null) {
@@ -177,6 +236,57 @@ function applicationDisplayStatus(application: Application, conversation?: JobCo
 function clientName(job?: Job | null) {
   if (!job?.client) return "Client";
   return `${job.client.first_name ?? "Client"} ${job.client.last_name ?? ""}`.trim();
+}
+
+function participantName(profile?: { first_name?: string | null; last_name?: string | null } | null) {
+  return `${profile?.first_name ?? ""} ${profile?.last_name ?? ""}`.trim() || "Accordia user";
+}
+
+function conversationStarted(conversation: JobConversation) {
+  if (!conversation.work_starts_at) return false;
+  const startDate = new Date(conversation.work_starts_at);
+  return !Number.isNaN(startDate.getTime()) && startDate.getTime() <= Date.now();
+}
+
+function isCompletedConversation(conversation: JobConversation) {
+  return (conversation.work_status ?? "").toLowerCase() === "completed";
+}
+
+function isActiveConversation(conversation: JobConversation) {
+  return Boolean(conversation.upfront_payment_made_at) && conversationStarted(conversation) && !isCompletedConversation(conversation);
+}
+
+function applicationWorkStatus(application: Application, conversation?: JobConversation) {
+  if (!conversation || !isHiredApplication(application.status)) return "";
+  if (isCompletedConversation(conversation)) return "Completed";
+  return conversationStarted(conversation) ? "In progress" : "Job not started";
+}
+
+function groupConversationsByJob(conversations: JobConversation[], jobs: Job[]): ConversationGroup[] {
+  const jobsById = new Map(jobs.map((job) => [job.id, job]));
+  const groups = new Map<string, ConversationGroup>();
+
+  for (const conversation of conversations) {
+    const group = groups.get(conversation.job_id) ?? {
+      jobId: conversation.job_id,
+      job: jobsById.get(conversation.job_id) ?? null,
+      conversations: [] as JobConversation[]
+    };
+    group.conversations.push(conversation);
+    groups.set(conversation.job_id, group);
+  }
+
+  return [...groups.values()].sort((first, second) => {
+    const firstLatest = Math.max(...first.conversations.map((conversation) => timestampValue(conversation.updated_at ?? conversation.created_at)));
+    const secondLatest = Math.max(...second.conversations.map((conversation) => timestampValue(conversation.updated_at ?? conversation.created_at)));
+    return secondLatest - firstLatest;
+  });
+}
+
+function timestampValue(value?: string | null) {
+  if (!value) return 0;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? 0 : date.getTime();
 }
 
 function ReferenceImages({ images }: { images: string[] }) {
@@ -285,6 +395,8 @@ function ApplicationCard({ application, conversation, onAcceptInvite, onDelete, 
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const status = applicationDisplayStatus(application, conversation);
+  const workStatus = applicationWorkStatus(application, conversation);
+  const hasUnreadMessages = Boolean(conversation?.unread_message_count);
   const canWithdraw = !isDeclinedApplication(application.status) && !isHiredApplication(application.status);
   const canDelete = isDeclinedApplication(application.status);
 
@@ -293,7 +405,10 @@ function ApplicationCard({ application, conversation, onAcceptInvite, onDelete, 
       <div className="flex items-start justify-between gap-3">
         <StatusPill tone="amber">{categoryName(application.job)}</StatusPill>
         <div className="flex items-start gap-2">
-          <ApplicationStatusPill status={status} />
+          <div className="flex flex-wrap items-center justify-end gap-1.5">
+            <ApplicationStatusPill status={status} />
+            {workStatus ? <span className="text-sm font-semibold text-[#196c88]">- {workStatus}</span> : null}
+          </div>
           <div className="relative">
             <MoreButton aria-label="Manage application" className="h-8 w-8 border-0 shadow-none" onClick={() => setMenuOpen(true)} />
             {menuOpen ? (
@@ -306,7 +421,7 @@ function ApplicationCard({ application, conversation, onAcceptInvite, onDelete, 
                   </div>
                   <button className="flex w-full items-center gap-3 py-2 text-left text-sm text-[#757575] hover:text-[#196c88]" onClick={() => { setMenuOpen(false); onView(); }} type="button"><Eye size={17} /> View application</button>
                   {status === "invited" && !conversation ? <button className="flex w-full items-center gap-3 py-2 text-left text-sm text-[#757575] hover:text-[#196c88]" onClick={() => { setMenuOpen(false); onAcceptInvite(); }} type="button"><CheckCircle2 size={17} /> Accept invitation</button> : null}
-                  {conversation ? <button className="flex w-full items-center gap-3 py-2 text-left text-sm text-[#757575] hover:text-[#196c88]" onClick={() => { setMenuOpen(false); onOpenChat(); }} type="button"><MessageCircle size={17} /> Chat</button> : null}
+                  {conversation ? <button className="flex w-full items-center gap-3 py-2 text-left text-sm text-[#757575] hover:text-[#196c88]" onClick={() => { setMenuOpen(false); onOpenChat(); }} type="button"><span className="relative"><MessageCircle size={17} />{hasUnreadMessages ? <span className="absolute -right-1 -top-1 h-2 w-2 rounded-full bg-[#bf1d1d]" /> : null}</span> Chat</button> : null}
                   {canWithdraw ? <button className="flex w-full items-center gap-3 py-2 text-left text-sm text-[#757575] hover:text-[#196c88]" onClick={() => { setMenuOpen(false); onWithdraw(); }} type="button"><Undo2 size={17} /> Withdraw application</button> : null}
                   {canDelete ? <button className="flex w-full items-center gap-3 py-2 text-left text-sm text-[#757575] hover:text-red-700" onClick={() => { setMenuOpen(false); onDelete(); }} type="button"><Trash2 size={17} /> Delete application</button> : null}
                 </div>
@@ -554,6 +669,257 @@ function ApplicationDetailsModal({ application, conversation, onAcceptInvite, on
   );
 }
 
+function ProgressStep({
+  index,
+  label,
+  tone = "green",
+  helper
+}: {
+  index: number;
+  label: string;
+  tone?: "green" | "amber" | "gray";
+  helper?: string;
+}) {
+  const toneClasses = {
+    green: "bg-[#0fa269] text-white",
+    amber: "bg-[#f4a422] text-white",
+    gray: "bg-[#e8e8e8] text-white"
+  };
+  const labelClass = tone === "green" && label === "Completed" ? "text-[#0fa269]" : "text-[#5e5e5e]";
+
+  return (
+    <div className="relative flex min-h-[72px] gap-5">
+      <span className={`z-10 grid h-9 w-9 shrink-0 place-items-center rounded-full text-[16px] font-semibold ${toneClasses[tone]}`}>
+        {index}
+      </span>
+      <div className="pb-5">
+        <p className={`text-[14px] font-medium leading-[1.5] ${labelClass}`}>{label}</p>
+        {helper ? <p className="mt-1 text-[13px] font-light leading-[1.5] text-[#a4a4a4]">{helper}</p> : null}
+      </div>
+    </div>
+  );
+}
+
+function ProfessionalActiveConversationCard({
+  conversation,
+  expanded,
+  groupSize,
+  job,
+  onOpenChat,
+  onToggle,
+  onUploadDeliverables,
+  onViewRequest
+}: {
+  conversation: JobConversation;
+  expanded: boolean;
+  groupSize: number;
+  job?: Job | null;
+  onOpenChat: (conversation: JobConversation) => void;
+  onToggle: () => void;
+  onUploadDeliverables: (conversation: JobConversation, files: FileList | null) => void;
+  onViewRequest: (job: Job) => void;
+}) {
+  const workState = activeWorkState(conversation);
+  const startedAt = activeStartedDate(conversation);
+  const expectedAt = expectedCompletionDate(conversation);
+  const deliverables = conversation.deliverables ?? [];
+  const agreedPrice = conversation.application?.proposed_rate ?? jobPriceAmount(job);
+  const upfrontPayment = agreedPrice ? Math.round(agreedPrice / 2) : null;
+  const remainingPayment = finalPaymentAmount(conversation);
+  const isCompleted = isCompletedConversation(conversation);
+  const normalizedWorkStatus = (conversation.work_status ?? "in_progress").toLowerCase();
+  const client = conversation.client;
+  const location = [job?.location ?? conversation.job?.location, job?.state ?? conversation.job?.state].filter(Boolean).join(", ") || "Location not provided";
+
+  return (
+    <div className="rounded-[8px] border border-[#b8d1da] bg-[#fcfdfd] p-4 sm:p-6">
+      <div className="rounded-[8px] border border-[#bdebd1] bg-[#f3fef3] p-4">
+        <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+          <div className="flex min-w-0 items-start gap-4">
+            <ProfileAvatar avatarUrl={client?.avatar_url} className="h-14 w-14" iconSize={22} />
+            <div className="min-w-0">
+              <h2 className="text-[15px] font-medium leading-[1.5] text-[#5e5e5e]">{participantName(client)}</h2>
+              <p className="mt-1 inline-flex items-center gap-1 text-[13px] text-[#5e5e5e]">
+                <MapPin className="shrink-0 text-[#196c88]" size={15} strokeWidth={1.8} />
+                {location}
+              </p>
+            </div>
+          </div>
+          <div className="flex flex-col items-start gap-2 text-[14px] font-medium leading-[1.5] lg:ml-auto lg:min-w-[280px]">
+            <div className="grid grid-cols-[20px_minmax(0,1fr)] items-center gap-2 text-[#196c88]">
+              <BriefcaseBusiness size={17} />
+              <p>Work: <span className={workState.colorClass}>{workState.label}</span></p>
+            </div>
+            <div className="grid grid-cols-[20px_minmax(0,1fr)] items-center gap-2 text-[#196c88]">
+              <Clock3 size={17} />
+              <p>Started: <span className="font-light text-[#a4a4a4]">{formatDisplayDate(startedAt)}</span></p>
+            </div>
+          </div>
+        </div>
+
+        <div className="mt-5">
+          <StatusPill tone="gray">{categoryName(job ?? conversation.job)}</StatusPill>
+        </div>
+
+        <div className="mt-6 grid gap-5 text-[14px] leading-[1.5] sm:grid-cols-3">
+          <div>
+            <p className="font-medium text-[#5e5e5e]">Work type</p>
+            <p className="mt-2 font-light text-[#a4a4a4]">{job?.is_remote ?? conversation.job?.is_remote ? "Remote" : "In-person"}</p>
+          </div>
+          <div>
+            <p className="font-medium text-[#5e5e5e]">Date Started</p>
+            <p className="mt-2 font-light text-[#a4a4a4]">{formatDisplayDate(startedAt)}</p>
+          </div>
+          <div>
+            <p className="font-medium text-[#5e5e5e]">Expected Completion Date</p>
+            <p className="mt-2 font-light text-[#a4a4a4]">{formatDisplayDate(expectedAt)}</p>
+          </div>
+        </div>
+
+        <div className="mt-6 flex flex-wrap items-center gap-3">
+          <Button className="relative h-11 min-w-[132px] rounded-[5px] px-5 py-0" onClick={() => onOpenChat(conversation)} type="button">
+            Chat
+            {conversation.unread_message_count ? <span aria-hidden="true" className="absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full bg-[#bf1d1d]" /> : null}
+          </Button>
+          {job ? (
+            <Button className="h-11 min-w-[132px] rounded-[5px] border-[#196c88] px-5 py-0 text-[#196c88]" onClick={() => onViewRequest(job)} type="button" variant="secondary">
+              View Profile
+            </Button>
+          ) : null}
+          <MoreButton aria-label="More active job actions" />
+          <button
+            aria-label={expanded ? "Collapse job details" : "Expand job details"}
+            aria-expanded={expanded}
+            className="ml-auto grid h-10 w-10 place-items-center rounded-full border border-[#196c88] text-[#196c88] transition hover:bg-[#f2f6f8]"
+            onClick={onToggle}
+            type="button"
+          >
+            <ChevronDown className={`transition ${expanded ? "rotate-180" : ""}`} size={20} />
+          </button>
+        </div>
+      </div>
+
+      {expanded ? (
+        <>
+          <section className="mt-6 grid gap-8 rounded-[8px] border border-[#b8d1da] bg-white p-4 sm:p-6 lg:grid-cols-2">
+            <div>
+              <h3 className="text-[22px] font-medium leading-[1.3] text-[#5e5e5e] sm:text-[26px]">Job Details</h3>
+              <div className="mt-7 space-y-4">
+                <div>
+                  <p className="text-[15px] font-medium text-[#5e5e5e]">Job Description</p>
+                  <p className="mt-2 line-clamp-5 text-[14px] font-light leading-6 text-[#757575]">{job?.description ?? conversation.job?.description ?? conversation.application?.pitch ?? "No description available"}</p>
+                </div>
+                <p className="text-[15px] text-[#5e5e5e]">
+                  Number of professionals Hired: <span className="ml-3 text-[20px] font-medium text-[#196c88]">{groupSize}</span>
+                </p>
+                <p className="text-[15px] text-[#5e5e5e]">
+                  Agreed Price: <span className="ml-3 text-[20px] font-medium text-[#196c88]">{formatCurrency(agreedPrice)}</span>
+                </p>
+              </div>
+            </div>
+            <div>
+              <h3 className="text-[22px] font-medium leading-[1.3] text-[#5e5e5e] sm:text-[26px]">Job Progress</h3>
+              <div className="relative mt-7">
+                <span className="absolute left-[18px] top-4 h-[150px] w-px bg-[#5e5e5e]" />
+                <ProgressStep
+                  index={1}
+                  label={isCompleted ? "In progress" : workState.label}
+                  helper={`Started on ${formatDisplayDate(startedAt)}`}
+                  tone={normalizedWorkStatus === "completed" ? "green" : workState.stepTone}
+                />
+                <ProgressStep
+                  index={2}
+                  label={conversation.revision_requested_at ? "Revision" : "Revision"}
+                  helper={conversation.revision_requested_at ? `Revision received on ${formatDisplayDate(conversation.revision_requested_at)}` : undefined}
+                  tone={conversation.revision_requested_at || normalizedWorkStatus === "completed" ? "green" : "gray"}
+                />
+                <ProgressStep
+                  index={3}
+                  label="Completed"
+                  helper={conversation.completed_at ? `Completed on ${formatDisplayDate(conversation.completed_at)}` : undefined}
+                  tone={normalizedWorkStatus === "completed" ? "green" : "gray"}
+                />
+              </div>
+            </div>
+          </section>
+
+          <section className="mt-6 grid gap-8 rounded-[8px] border border-[#b8d1da] bg-white p-4 sm:p-6 lg:grid-cols-2">
+            <div>
+              <h3 className="text-[22px] font-medium leading-[1.3] text-[#5e5e5e] sm:text-[26px]">Deliverables</h3>
+              {!isCompleted ? (
+                <div className="mt-4 max-w-[270px]">
+                  <AttachmentUploadArea onChange={(files) => onUploadDeliverables(conversation, files)} />
+                </div>
+              ) : null}
+              <AttachmentList attachments={deliverables} />
+              {deliverables.length === 0 ? <p className="mt-4 text-sm text-muted">No files submitted yet.</p> : null}
+            </div>
+            <div>
+              <h3 className="text-[22px] font-medium leading-[1.3] text-[#5e5e5e] sm:text-[26px]">Payment</h3>
+              <div className="mt-7 space-y-5 text-[15px] text-[#5e5e5e]">
+                <p>
+                  Upfront Payment: <span className="ml-3 text-[18px] font-medium text-[#0fa269]">{formatPaymentAmount(upfrontPayment)}</span>
+                  {conversation.upfront_payment_made_at ? <span className="ml-2 text-[13px] font-semibold text-[#0fa269]">(Payment made)</span> : null}
+                </p>
+                <p>
+                  Remaining Payment: <span className={`ml-3 text-[18px] font-medium ${conversation.final_payment_made_at ? "text-[#0fa269]" : "text-[#f4a422]"}`}>{formatPaymentAmount(remainingPayment)}</span>
+                  <span className={`ml-2 text-[13px] font-semibold ${conversation.final_payment_made_at ? "text-[#0fa269]" : "text-[#f4a422]"}`}>
+                    {conversation.final_payment_made_at ? "(Payment made)" : "(Released after job confirmation)"}
+                  </span>
+                </p>
+              </div>
+            </div>
+          </section>
+        </>
+      ) : null}
+    </div>
+  );
+}
+
+function ProfessionalActiveJobGroupCard({
+  group,
+  onOpenChat,
+  onUploadDeliverables,
+  onViewRequest
+}: {
+  group: ConversationGroup;
+  onOpenChat: (conversation: JobConversation) => void;
+  onUploadDeliverables: (conversation: JobConversation, files: FileList | null) => void;
+  onViewRequest: (job: Job) => void;
+}) {
+  const [expandedConversationId, setExpandedConversationId] = useState(group.conversations[0]?.id ?? "");
+  const job = group.job ?? group.conversations[0]?.job;
+
+  useEffect(() => {
+    setExpandedConversationId((current) => {
+      if (!current || group.conversations.some((conversation) => conversation.id === current)) return current;
+      return group.conversations[0]?.id ?? "";
+    });
+  }, [group.conversations]);
+
+  if (group.conversations.length === 0) return null;
+
+  return (
+    <article className="rounded-[8px] border border-[#b8d1da] bg-white p-4 sm:p-6 lg:p-8">
+      <div className="space-y-8">
+        {group.conversations.map((conversation) => (
+          <ProfessionalActiveConversationCard
+            conversation={conversation}
+            expanded={expandedConversationId === conversation.id}
+            groupSize={group.conversations.length}
+            job={job as Job | null}
+            key={conversation.id}
+            onOpenChat={onOpenChat}
+            onToggle={() => setExpandedConversationId((current) => current === conversation.id ? "" : conversation.id)}
+            onUploadDeliverables={onUploadDeliverables}
+            onViewRequest={onViewRequest}
+          />
+        ))}
+      </div>
+    </article>
+  );
+}
+
 function ProfessionalJobsContent() {
   const searchParams = useSearchParams();
   const token = useRequireAuth();
@@ -572,6 +938,10 @@ function ProfessionalJobsContent() {
   const [inquiryConversation, setInquiryConversation] = useState<ProfessionalInquiry | null>(null);
   const [openedConversationId, setOpenedConversationId] = useState("");
   const [openedInquiryId, setOpenedInquiryId] = useState("");
+  const [activeFilter, setActiveFilter] = useState<ProfessionalRequestFilter>("service");
+  const [matchedPage, setMatchedPage] = useState(1);
+  const [showAllApplications, setShowAllApplications] = useState(false);
+  const [proposalSuccessOpen, setProposalSuccessOpen] = useState(false);
   const conversationIdParam = searchParams.get("conversation_id");
   const inquiryIdParam = searchParams.get("inquiry_id");
   const appliedJobIds = useMemo(() => new Set(applications.map((application) => application.job_id)), [applications]);
@@ -581,10 +951,30 @@ function ProfessionalJobsContent() {
     .filter((job) => !query || `${job.title} ${job.description} ${categoryName(job)} ${job.location ?? ""} ${job.state ?? ""}`.toLowerCase().includes(query)), [appliedJobIds, jobs, query]);
   const filteredApplications = useMemo(() => applications
     .filter((application) => !query || `${application.job?.title ?? ""} ${application.pitch} ${categoryName(application.job)} ${application.job?.location ?? ""} ${application.job?.state ?? ""}`.toLowerCase().includes(query)), [applications, query]);
+  const activeConversations = useMemo(() => conversations.filter(isActiveConversation), [conversations]);
+  const completedConversations = useMemo(() => conversations.filter((conversation) => Boolean(conversation.upfront_payment_made_at) && isCompletedConversation(conversation)), [conversations]);
+  const rejectedApplications = useMemo(() => filteredApplications.filter((application) => isDeclinedApplication(application.status)), [filteredApplications]);
+  const activeGroups = useMemo(() => groupConversationsByJob(activeConversations, jobs), [activeConversations, jobs]);
+  const completedGroups = useMemo(() => groupConversationsByJob(completedConversations, jobs), [completedConversations, jobs]);
+  const matchedPageCount = Math.max(1, Math.ceil(matchedJobs.length / MATCHED_REQUESTS_PAGE_SIZE));
+  const visibleMatchedJobs = matchedJobs.slice((matchedPage - 1) * MATCHED_REQUESTS_PAGE_SIZE, matchedPage * MATCHED_REQUESTS_PAGE_SIZE);
+  const visibleApplications = showAllApplications ? filteredApplications : filteredApplications.slice(0, APPLICATION_PREVIEW_LIMIT);
+  const filterCounts: Record<ProfessionalRequestFilter, number> = {
+    service: matchedJobs.length + filteredApplications.length,
+    active: activeGroups.length,
+    completed: completedGroups.length,
+    rejected: rejectedApplications.length
+  };
 
   useEffect(() => { if (loadError) showToast({ tone: "error", title: "Could not load matched jobs", body: loadError }); }, [loadError, showToast]);
   useEffect(() => { if (applicationError) showToast({ tone: "error", title: "Could not load applications", body: applicationError }); }, [applicationError, showToast]);
   useEffect(() => { if (conversationError) showToast({ tone: "error", title: "Could not load chats", body: conversationError }); }, [conversationError, showToast]);
+  useEffect(() => {
+    setMatchedPage(1);
+  }, [query]);
+  useEffect(() => {
+    if (matchedPage > matchedPageCount) setMatchedPage(matchedPageCount);
+  }, [matchedPage, matchedPageCount]);
 
   useEffect(() => {
     if (!conversationIdParam || openedConversationId === conversationIdParam) return;
@@ -676,6 +1066,7 @@ function ProfessionalJobsContent() {
       setProposalForms((current) => ({ ...current, [job.id]: defaultProposalState() }));
       setProposalFilesByJob((current) => ({ ...current, [job.id]: [] }));
       setProposalJob(null);
+      setProposalSuccessOpen(true);
       await refreshApplications();
       refreshMatchedJobs();
     } catch (err) {
@@ -754,10 +1145,27 @@ function ProfessionalJobsContent() {
     }
   }
 
+  async function uploadDeliverables(conversation: JobConversation, files: FileList | null) {
+    const deliverableFiles = Array.from(files ?? []);
+    if (!token || deliverableFiles.length === 0) return;
+
+    setBusy(`deliverables-${conversation.id}`);
+    try {
+      await Promise.all(deliverableFiles.map((file) => uploadConversationDeliverable(token, conversation.id, file)));
+      refreshConversations();
+      showToast({ tone: "success", title: "Deliverables uploaded", body: "The client can now review the submitted files." });
+    } catch (err) {
+      showToast({ tone: "error", title: "Deliverable upload failed", body: err instanceof Error ? err.message : "Could not upload deliverables" });
+    } finally {
+      setBusy("");
+    }
+  }
+
   if (loading || applicationsLoading) return <AppShell><PageLoader /></AppShell>;
 
   return (
     <AppShell>
+      <div className="relative left-1/2 w-full max-w-[1180px] -translate-x-1/2">
       <div className="mb-8">
         <p className="text-[20px] font-medium text-[#196c88]">Search Request And Application</p>
         <h1 className="mt-10 text-[28px] font-light leading-tight text-[#5e5e5e] sm:text-[34px]">Find matched service request</h1>
@@ -768,18 +1176,64 @@ function ProfessionalJobsContent() {
         </label>
       </div>
 
+      <nav aria-label="Service request filters" className="mb-8 border-b-[3px] border-[#d4d4d4]">
+        <div className="grid grid-cols-2 gap-x-4 gap-y-2 pt-2 sm:grid-cols-4 sm:gap-x-0">
+          {(["service", "active", "completed", "rejected"] as ProfessionalRequestFilter[]).map((filter) => {
+            const active = activeFilter === filter;
+            return (
+              <button
+                aria-current={active ? "page" : undefined}
+                className={`flex min-w-0 px-0 pt-1 text-[13px] font-medium leading-[1.5] transition sm:text-[14px] md:text-[16px] lg:text-[18px] ${filter === "service" ? "justify-start text-left" : filter === "rejected" ? "justify-start text-left sm:justify-end sm:text-right" : "justify-start text-left sm:justify-center sm:text-center"} ${active ? "text-[#196c88]" : "text-[#a4a4a4] hover:text-[#196c88]"}`}
+                key={filter}
+                onClick={() => setActiveFilter(filter)}
+                type="button"
+              >
+                <span className={`relative -mb-[3px] inline-flex max-w-full items-center border-b-4 pb-2 ${active ? "border-[#196c88]" : "border-transparent"}`}>
+                  {professionalRequestFilterLabels[filter]}({filterCounts[filter]})
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      </nav>
+
+      {activeFilter === "service" ? (
       <div className="grid gap-8 xl:grid-cols-[minmax(320px,0.9fr)_minmax(360px,1.1fr)]">
         <section className="min-w-0">
           <h2 className="mb-7 text-[28px] font-semibold text-[#5e5e5e]">Matched Service Request({matchedJobs.length})</h2>
           {matchedJobs.length === 0 ? <EmptyState title="No matched requests" body="New matching service requests will appear here." /> : null}
-          <div className="space-y-7">{matchedJobs.map((job) => <MatchedServiceCard job={job} key={job.id} onOpen={() => setRequestJob(job)} />)}</div>
+          <div className="space-y-7">{visibleMatchedJobs.map((job) => <MatchedServiceCard job={job} key={job.id} onOpen={() => setRequestJob(job)} />)}</div>
+          {matchedPageCount > 1 ? (
+            <div className="mt-7 flex items-center justify-center gap-4 text-[#196c88]">
+              <button aria-label="Previous matched requests page" className="grid h-8 w-8 place-items-center rounded-full transition hover:bg-[#f2f6f8] disabled:cursor-not-allowed disabled:opacity-40" disabled={matchedPage === 1} onClick={() => setMatchedPage((page) => Math.max(1, page - 1))} type="button">
+                <ChevronLeft size={20} />
+              </button>
+              {Array.from({ length: matchedPageCount }).map((_, index) => {
+                const page = index + 1;
+                return (
+                  <button
+                    aria-current={matchedPage === page ? "page" : undefined}
+                    className={`grid h-8 w-8 place-items-center rounded-[5px] text-sm font-semibold transition ${matchedPage === page ? "bg-[#196c88] text-white" : "text-[#196c88] hover:bg-[#f2f6f8]"}`}
+                    key={page}
+                    onClick={() => setMatchedPage(page)}
+                    type="button"
+                  >
+                    {page}
+                  </button>
+                );
+              })}
+              <button aria-label="Next matched requests page" className="grid h-8 w-8 place-items-center rounded-full transition hover:bg-[#f2f6f8] disabled:cursor-not-allowed disabled:opacity-40" disabled={matchedPage === matchedPageCount} onClick={() => setMatchedPage((page) => Math.min(matchedPageCount, page + 1))} type="button">
+                <ChevronRight size={20} />
+              </button>
+            </div>
+          ) : null}
         </section>
 
         <section className="min-w-0">
           <h2 className="mb-7 text-[28px] font-semibold text-[#5e5e5e]">My Applications({filteredApplications.length})</h2>
           {filteredApplications.length === 0 ? <EmptyState title="No applications yet" body="Send a proposal to a matched request and it will stay here." /> : null}
           <div className="space-y-7">
-            {filteredApplications.map((application) => {
+            {visibleApplications.map((application) => {
               const conversation = conversations.find((item) => item.application_id === application.id);
               return (
                 <ApplicationCard
@@ -795,7 +1249,68 @@ function ProfessionalJobsContent() {
               );
             })}
           </div>
+          {!showAllApplications && filteredApplications.length > APPLICATION_PREVIEW_LIMIT ? (
+            <div className="mt-8 flex justify-end">
+              <button className="inline-flex items-center gap-2 text-sm font-semibold text-[#196c88] transition hover:text-[#125a73]" onClick={() => setShowAllApplications(true)} type="button">
+                See all application
+                <ChevronRight size={18} />
+              </button>
+            </div>
+          ) : null}
         </section>
+      </div>
+      ) : null}
+
+      {activeFilter === "active" ? (
+        <div className="space-y-6">
+          {activeGroups.length === 0 ? <EmptyState title="No active jobs yet" body="Jobs appear here once the agreed scheduled start date has arrived." /> : null}
+          {activeGroups.map((group) => (
+            <ProfessionalActiveJobGroupCard
+              group={group}
+              key={group.jobId}
+              onOpenChat={setChatConversation}
+              onUploadDeliverables={uploadDeliverables}
+              onViewRequest={setRequestJob}
+            />
+          ))}
+        </div>
+      ) : null}
+
+      {activeFilter === "completed" ? (
+        <div className="space-y-6">
+          {completedGroups.length === 0 ? <EmptyState title="No completed jobs yet" body="Completed jobs will appear here after client confirmation." /> : null}
+          {completedGroups.map((group) => (
+            <ProfessionalActiveJobGroupCard
+              group={group}
+              key={group.jobId}
+              onOpenChat={setChatConversation}
+              onUploadDeliverables={uploadDeliverables}
+              onViewRequest={setRequestJob}
+            />
+          ))}
+        </div>
+      ) : null}
+
+      {activeFilter === "rejected" ? (
+        <section className="space-y-7">
+          {rejectedApplications.length === 0 ? <EmptyState title="No rejected applications" body="Rejected or withdrawn applications will appear here." /> : null}
+          {rejectedApplications.map((application) => {
+            const conversation = conversations.find((item) => item.application_id === application.id);
+            return (
+              <ApplicationCard
+                application={application}
+                conversation={conversation}
+                key={application.id}
+                onAcceptInvite={() => acceptInvite(application)}
+                onDelete={() => remove(application)}
+                onOpenChat={() => conversation && setChatConversation(conversation)}
+                onView={() => setApplicationModal(application)}
+                onWithdraw={() => withdraw(application)}
+              />
+            );
+          })}
+        </section>
+      ) : null}
       </div>
 
       {requestJob ? <RequestDetailsModal job={requestJob} onClose={() => setRequestJob(null)} onSendProposal={() => openProposal(requestJob)} /> : null}
@@ -830,6 +1345,16 @@ function ProfessionalJobsContent() {
       {busy ? <div className="fixed bottom-5 right-5 z-[110] inline-flex items-center gap-2 rounded-[5px] bg-white px-4 py-3 text-sm font-semibold text-[#196c88] shadow-lg"><Spinner className="h-4 w-4" /> Working</div> : null}
       {chatConversation ? <ChatModal conversation={chatConversation} onClose={() => setChatConversation(null)} /> : null}
       {inquiryConversation ? <ChatModal conversation={inquiryConversation} kind="inquiry" onClose={() => setInquiryConversation(null)} /> : null}
+      {proposalSuccessOpen ? (
+        <SurfaceModal onClose={() => setProposalSuccessOpen(false)} panelClassName="p-8 sm:p-12" size="md">
+          <div className="py-4 text-center">
+            <div className="mx-auto grid h-48 w-48 place-items-center rounded-full bg-[#e6f6ef] sm:h-60 sm:w-60">
+              <CheckCircle2 className="text-[#0b8b5a]" size={104} strokeWidth={1.6} />
+            </div>
+            <h2 className="mt-8 text-[24px] font-semibold text-[#5e5e5e]">Proposal Submitted!</h2>
+          </div>
+        </SurfaceModal>
+      ) : null}
     </AppShell>
   );
 }

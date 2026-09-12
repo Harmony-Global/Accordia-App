@@ -16,6 +16,7 @@ function readOAuthParams() {
 
   return {
     accessToken: hashParams.get("access_token"),
+    refreshToken: hashParams.get("refresh_token"),
     error: hashParams.get("error_description") ?? hashParams.get("error")
   };
 }
@@ -29,6 +30,7 @@ export default function AuthCallbackPage() {
   const session = useSession();
   const showToast = useToast();
   const [token, setToken] = useState<string | null>(null);
+  const [refreshToken, setRefreshToken] = useState<string | null>(null);
   const [role, setRole] = useState<RegisterRole>("client");
   const [email, setEmail] = useState("");
   const [firstName, setFirstName] = useState("");
@@ -37,13 +39,13 @@ export default function AuthCallbackPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
-  function handleOAuthResponse(accessToken: string, data: OAuthProfileResponse) {
+  function handleOAuthResponse(accessToken: string, data: OAuthProfileResponse, nextRefreshToken?: string | null) {
     if (data.profile) {
       if (!data.app_session_id) {
         throw new Error("Could not create a secure app session.");
       }
       setLoading(true);
-      session.setSession(accessToken, data.profile.role, data.app_session_id, data.profile);
+      session.setSession(accessToken, data.profile.role, data.app_session_id, data.profile, nextRefreshToken);
       showToast({ tone: "success", title: "Google sign-in successful", body: "Your workspace is ready." });
       router.replace(routeAfterAuth(data.profile));
       return true;
@@ -76,10 +78,11 @@ export default function AuthCallbackPage() {
       }
 
       setToken(params.accessToken);
+      setRefreshToken(params.refreshToken);
 
       try {
         const data = await completeOAuthProfile(params.accessToken);
-        const isRedirecting = handleOAuthResponse(params.accessToken, data);
+        const isRedirecting = handleOAuthResponse(params.accessToken, data, params.refreshToken);
         if (isRedirecting) return;
       } catch (err) {
         const message = err instanceof Error ? err.message : "Could not finish Google sign-in";
@@ -106,7 +109,7 @@ export default function AuthCallbackPage() {
         first_name: firstName,
         last_name: lastName
       });
-      const isRedirecting = handleOAuthResponse(token, data);
+      const isRedirecting = handleOAuthResponse(token, data, refreshToken);
       if (isRedirecting) return;
     } catch (err) {
       const message = err instanceof Error ? err.message : "Could not complete profile";

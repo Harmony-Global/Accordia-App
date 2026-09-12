@@ -3,6 +3,7 @@ import type { Profile, Role } from "@/types";
 
 export type AuthSession = {
   access_token: string;
+  refresh_token?: string | null;
 };
 
 export type LoginPayload = {

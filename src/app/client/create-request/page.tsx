@@ -27,9 +27,10 @@ export default function NewJobPage() {
   const token = useRequireAuth();
   const { categories, error: categoryError, loading: categoriesLoading } = useCategories();
   const [loading, setLoading] = useState(false);
-  const [numberOfProfessionals, setNumberOfProfessionals] = useState(1);
+  const [numberOfProfessionalsInput, setNumberOfProfessionalsInput] = useState("1");
   const [workType, setWorkType] = useState<WorkType>("in_person");
   const [priceType, setPriceType] = useState<PriceType>("negotiable");
+  const numberOfProfessionals = clampProfessionals(Number(numberOfProfessionalsInput));
 
   useEffect(() => {
     if (categoryError) {
@@ -53,7 +54,7 @@ export default function NewJobPage() {
         title: String(form.get("title")),
         description: String(form.get("description")),
         category_id: String(form.get("category_id")),
-        number_of_professionals: numberOfProfessionals,
+        number_of_professionals: clampProfessionals(Number(numberOfProfessionalsInput)),
         price_type: priceType,
         price_amount: priceAmount,
         location: String(form.get("location")),
@@ -119,16 +120,20 @@ export default function NewJobPage() {
                 max={MAX_PROFESSIONALS}
                 min={MIN_PROFESSIONALS}
                 name="number_of_professionals"
-                onChange={(event) => setNumberOfProfessionals(clampProfessionals(Number(event.target.value)))}
+                onBlur={() => setNumberOfProfessionalsInput(String(numberOfProfessionals))}
+                onChange={(event) => {
+                  const value = event.target.value;
+                  if (/^\d*$/.test(value)) setNumberOfProfessionalsInput(value);
+                }}
                 type="number"
-                value={numberOfProfessionals}
+                value={numberOfProfessionalsInput}
               />
               <span className="flex items-center gap-3 text-[#757575]">
                 <button
                   aria-label="Decrease number of professionals"
                   className="grid h-8 w-8 place-items-center rounded-full transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40"
                   disabled={numberOfProfessionals <= MIN_PROFESSIONALS}
-                  onClick={() => setNumberOfProfessionals((current) => clampProfessionals(current - 1))}
+                  onClick={() => setNumberOfProfessionalsInput(String(clampProfessionals(numberOfProfessionals - 1)))}
                   type="button"
                 >
                   <Minus size={16} />
@@ -137,7 +142,7 @@ export default function NewJobPage() {
                   aria-label="Increase number of professionals"
                   className="grid h-8 w-8 place-items-center rounded-full transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40"
                   disabled={numberOfProfessionals >= MAX_PROFESSIONALS}
-                  onClick={() => setNumberOfProfessionals((current) => clampProfessionals(current + 1))}
+                  onClick={() => setNumberOfProfessionalsInput(String(clampProfessionals(numberOfProfessionals + 1)))}
                   type="button"
                 >
                   <Plus size={17} />

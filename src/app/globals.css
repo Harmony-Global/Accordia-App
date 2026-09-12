@@ -103,6 +103,16 @@ select option:active,
   }
 }
 
+@keyframes quote-attention-glow {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(25, 108, 136, 0.2), 0 0 0 1px rgba(25, 108, 136, 0.35);
+  }
+  50% {
+    box-shadow: 0 0 0 4px rgba(25, 108, 136, 0.12), 0 0 16px rgba(25, 108, 136, 0.38);
+  }
+}
+
 .motion-panel {
   animation: fade-slide-up 620ms cubic-bezier(0.22, 1, 0.36, 1) both;
 }
@@ -129,6 +139,10 @@ select option:active,
 
 .mobile-menu-panel {
   animation: mobile-menu-down 220ms ease-out both;
+}
+
+.quote-attention-glow {
+  animation: quote-attention-glow 1.9s ease-in-out infinite;
 }
 
 @media (prefers-reduced-motion: reduce) {

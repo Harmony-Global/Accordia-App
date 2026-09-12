@@ -223,6 +223,7 @@ export type JobConversation = {
   final_payment_made_by?: string | null;
   deliverables?: DeliverableAttachment[];
   revision_note?: string | null;
+  unread_message_count?: number;
   review?: ConversationReview | ConversationReview[] | null;
   created_at: string;
   updated_at: string;
