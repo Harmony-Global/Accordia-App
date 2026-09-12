@@ -3,6 +3,7 @@
 import type { Profile } from "@/types";
 
 const TOKEN_KEY = "accordia_access_token";
+const REFRESH_TOKEN_KEY = "accordia_refresh_token";
 const ROLE_KEY = "accordia_role";
 const PROFILE_KEY = "accordia_profile";
 export const APP_SESSION_ID_KEY = "accordia_app_session_id";
@@ -12,16 +13,21 @@ function storage() {
   return window.sessionStorage;
 }
 
-export function saveSession(accessToken: string, role: string, appSessionId: string) {
+export function saveSession(accessToken: string, role: string, appSessionId: string, refreshToken?: string | null) {
   const store = storage();
   if (!store) return;
   store.setItem(TOKEN_KEY, accessToken);
   store.setItem(ROLE_KEY, role);
   store.setItem(APP_SESSION_ID_KEY, appSessionId);
+  if (refreshToken) store.setItem(REFRESH_TOKEN_KEY, refreshToken);
 }
 
 export function getToken() {
   return storage()?.getItem(TOKEN_KEY) ?? null;
+}
+
+export function getRefreshToken() {
+  return storage()?.getItem(REFRESH_TOKEN_KEY) ?? null;
 }
 
 export function getRole() {
@@ -60,6 +66,7 @@ export function clearSession() {
   const store = storage();
   if (!store) return;
   store.removeItem(TOKEN_KEY);
+  store.removeItem(REFRESH_TOKEN_KEY);
   store.removeItem(ROLE_KEY);
   store.removeItem(PROFILE_KEY);
   store.removeItem(APP_SESSION_ID_KEY);

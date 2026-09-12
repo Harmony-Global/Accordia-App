@@ -586,7 +586,7 @@ export function ChatModal({
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [draft, setDraft] = useState("");
   const [contactWarning, setContactWarning] = useState("");
-  const [hireStep, setHireStep] = useState<"ready" | "payment" | "paid">("ready");
+  const [hireStep, setHireStep] = useState<"ready" | "confirm" | "payment" | "paid">("ready");
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [hiring, setHiring] = useState(false);
@@ -671,6 +671,7 @@ export function ChatModal({
       : "For in-person jobs, contact details can be exchanged after an upfront payment is secured to help you coordinate the meeting."
     : "For remote jobs, communication is managed through Accordia's messaging system. Phone numbers, addresses and external links are restricted to help keep projects secure.";
   const hireName = participantName(otherParticipant);
+  const clientActionName = jobConversation?.client_id === profile?.id ? "You" : participantName(jobConversation?.client);
 
   const loadMessages = useCallback(async (showLoading = false) => {
     if (!token) return;
@@ -968,6 +969,9 @@ export function ChatModal({
     setScheduleStartPeriod(timePeriodFromDate(baseStart));
     setScheduleEndPeriod(timePeriodFromDate(baseEnd));
     setRescheduleOpen(true);
+    window.requestAnimationFrame(() => {
+      document.querySelector("[data-chat-modal-panel]")?.scrollIntoView({ block: "start", behavior: "smooth" });
+    });
   }
 
   function selectScheduleDate(value: Date) {
@@ -1051,7 +1055,8 @@ export function ChatModal({
   }
 
   return (
-    <SurfaceModal onClose={onClose} panelClassName="flex h-[calc(100dvh-24px)] max-h-[900px] min-h-0 flex-col overflow-hidden sm:h-[calc(100vh-48px)] sm:min-h-[680px]" size="chat">
+    <SurfaceModal onClose={onClose} panelClassName="flex h-[calc(100dvh-12px)] max-h-[900px] min-h-0 flex-col overflow-hidden sm:h-[calc(100vh-24px)] sm:min-h-[680px]" size="chat">
+        <div data-chat-modal-panel className="sr-only" />
         {rescheduleOpen ? (
           <SharedScheduleServiceCalendar
             align={jobConversation ? "top" : "center"}
@@ -1234,6 +1239,23 @@ export function ChatModal({
             </div>
           </div>
         ) : null}
+        {hireStep === "confirm" && isClient && jobConversation && acceptedQuote ? (
+          <div className="fixed inset-0 z-[105] flex items-center justify-center bg-black/25 p-4">
+            <section className="w-full max-w-xl rounded-[8px] bg-white px-5 py-10 text-center shadow-2xl sm:px-10">
+              <div className="mx-auto grid h-44 w-44 place-items-center rounded-full bg-[#e6f6ef] sm:h-56 sm:w-56">
+                <CheckCircle2 className="text-[#0b8b5a]" size={96} strokeWidth={1.6} />
+              </div>
+              <h2 className="mt-8 text-[22px] font-semibold text-[#5e5e5e]">Confirm hire</h2>
+              <p className="mx-auto mt-3 max-w-md text-sm leading-6 text-[#757575]">
+                You are about to hire {hireName}. Continue to payment to secure the upfront payment for this job.
+              </p>
+              <div className="mt-8 flex flex-wrap justify-center gap-3">
+                <Button className="h-11 rounded-[5px] px-6 py-0" onClick={() => setHireStep("payment")} type="button">Continue to payment</Button>
+                <Button className="h-11 rounded-[5px] border-[#196c88] px-6 py-0 text-[#196c88]" onClick={() => setHireStep("ready")} type="button" variant="secondary">Cancel</Button>
+              </div>
+            </section>
+          </div>
+        ) : null}
         {isClient && jobConversation && !isHired && !hasUpfrontPayment && acceptedQuote && hireStep === "ready" ? (
           <div className="m-4 mb-0 rounded-[8px] border-b-[3px] border-[#f4a422] bg-[#fffbe6] p-4">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -1244,7 +1266,7 @@ export function ChatModal({
                   <p className="mt-1 text-sm leading-5 text-[#757575]">If you are satisfied with your conversation, hire this professional to continue.</p>
                 </div>
               </div>
-              <Button className="shrink-0 rounded-[5px] px-5" onClick={() => setHireStep("payment")} type="button">
+              <Button className="shrink-0 rounded-[5px] px-5" onClick={() => setHireStep("confirm")} type="button">
                 Hire Professional
               </Button>
             </div>
@@ -1347,14 +1369,14 @@ export function ChatModal({
               {jobConversation && activeQuote?.status === "accepted" && dismissedQuoteNoticeId !== activeQuote.id ? (
                 <p className="flex items-center justify-end gap-2 text-xs font-medium text-[#5e5e5e]">
                   <Check className="text-[#0fa269]" size={15} />
-                  {participantName(jobConversation.client)} has accepted Quote
+                  {clientActionName} {clientActionName === "You" ? "accepted" : "has accepted"} Quote
                   <button className="font-semibold text-[#196c88]" onClick={() => setDismissedQuoteNoticeId(activeQuote.id)} type="button">Dismiss</button>
                 </p>
               ) : null}
               {jobConversation && activeQuote?.status === "review_requested" && dismissedQuoteNoticeId !== activeQuote.id ? (
                 <p className="flex items-center justify-end gap-2 text-xs font-medium text-[#5e5e5e]">
                   <Check className="text-[#0fa269]" size={15} />
-                  {participantName(jobConversation.client)} has requested for quote revision
+                  {clientActionName} {clientActionName === "You" ? "requested" : "has requested for"} quote revision
                   {canCreateQuote ? <button className="font-semibold text-[#196c88]" onClick={openQuoteForm} type="button">Revise Quote</button> : null}
                 </p>
               ) : null}
@@ -1432,7 +1454,7 @@ export function ChatModal({
             <div className="mt-3 flex flex-wrap gap-2">
               {canCreateQuote && !activeQuote ? (
                 <button
-                  className="inline-flex min-h-10 items-center gap-2 rounded-[5px] bg-[#196c88] px-4 text-sm font-semibold text-white transition hover:bg-[#125a73]"
+                  className="quote-attention-glow inline-flex min-h-10 items-center gap-2 rounded-[5px] bg-[#196c88] px-4 text-sm font-semibold text-white transition hover:bg-[#125a73]"
                   onClick={openQuoteForm}
                   type="button"
                 >

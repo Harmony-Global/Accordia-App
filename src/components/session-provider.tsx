@@ -15,7 +15,7 @@ type SessionContextValue = {
   ready: boolean;
   sessionExpired: boolean;
   refreshProfile: () => Promise<void>;
-  setSession: (accessToken: string, role: string, appSessionId: string, profile?: Profile | null) => void;
+  setSession: (accessToken: string, role: string, appSessionId: string, profile?: Profile | null, refreshToken?: string | null) => void;
   updateProfile: (profile: Partial<Profile>) => void;
   clear: () => void;
 };
@@ -59,6 +59,25 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     return () => window.removeEventListener("accordia:session-expired", expireSession);
   }, [expireSession]);
 
+  useEffect(() => {
+    function handleSessionRenewed(event: Event) {
+      const detail = (event as CustomEvent<{ accessToken?: string; appSessionId?: string; profile?: Profile; refreshToken?: string | null; role?: string }>).detail;
+      if (!detail?.accessToken || !detail.appSessionId || !detail.role) return;
+
+      setToken(detail.accessToken);
+      setRole(detail.role);
+      setProfileError("");
+      setSessionExpired(false);
+      if (detail.profile) {
+        setProfile(detail.profile);
+        setProfileLoading(false);
+      }
+    }
+
+    window.addEventListener("accordia:session-renewed", handleSessionRenewed);
+    return () => window.removeEventListener("accordia:session-renewed", handleSessionRenewed);
+  }, []);
+
   const refreshProfile = useCallback(async () => {
     if (!token) {
       setProfile(null);
@@ -89,8 +108,8 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     void refreshProfile();
   }, [refreshProfile]);
 
-  const setSession = useCallback((accessToken: string, nextRole: string, appSessionId: string, nextProfile?: Profile | null) => {
-    saveSession(accessToken, nextRole, appSessionId);
+  const setSession = useCallback((accessToken: string, nextRole: string, appSessionId: string, nextProfile?: Profile | null, refreshToken?: string | null) => {
+    saveSession(accessToken, nextRole, appSessionId, refreshToken);
     setToken(accessToken);
     setRole(nextRole);
     setProfileError("");

@@ -2,7 +2,7 @@
 
 import { useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useState } from "react";
-import { BriefcaseBusiness, CheckCircle2, ChevronDown, Clock3, Download, Eye, File, FileImage, FileSpreadsheet, FileText, MapPin, MessagesSquare, RefreshCw, ShieldCheck, Star, X, type LucideIcon } from "lucide-react";
+import { BriefcaseBusiness, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, Clock3, Download, Eye, File, FileImage, FileSpreadsheet, FileText, MapPin, MessagesSquare, RefreshCw, ShieldCheck, Star, X, type LucideIcon } from "lucide-react";
 import { AppShell, EmptyState } from "@/components/app-shell";
 import { ChatModal } from "@/components/chat-modal";
 import { ApplicationStatusPill, Button, IconButton, MoreButton, PageLoader, ProfileAvatar, Spinner, StatusPill, SurfaceModal, TextAreaField } from "@/components/ui";
@@ -17,6 +17,12 @@ import type { Application, ConversationReview, Job, JobApplicationSummary, JobCo
 
 type RequestFilter = "all" | "active" | "completed" | "rejected";
 type RequestTabSeenAt = Record<RequestFilter, number>;
+type ConversationGroup = {
+  jobId: string;
+  job?: Job | null;
+  conversations: JobConversation[];
+};
+const REQUESTS_PAGE_SIZE = 4;
 
 const requestFilterLabels: Record<RequestFilter, string> = {
   all: "My Request / Applications",
@@ -635,6 +641,12 @@ function isCompletedConversation(conversation: JobConversation) {
   return (conversation.work_status ?? "").toLowerCase() === "completed";
 }
 
+function conversationStarted(conversation: JobConversation) {
+  if (!conversation.work_starts_at) return false;
+  const startDate = new Date(conversation.work_starts_at);
+  return !Number.isNaN(startDate.getTime()) && startDate.getTime() <= Date.now();
+}
+
 function conversationReview(conversation: JobConversation): ConversationReview | null {
   const review = conversation.review;
   return Array.isArray(review) ? review[0] ?? null : review ?? null;
@@ -686,7 +698,7 @@ function profileCategories(application?: Pick<Application, "professional"> | nul
 }
 
 function activeStartedDate(conversation: JobConversation) {
-  return conversation.upfront_payment_made_at ?? conversation.updated_at ?? conversation.created_at;
+  return conversation.work_starts_at ?? conversation.upfront_payment_made_at ?? conversation.updated_at ?? conversation.created_at;
 }
 
 function timestampValue(value?: string | null) {
@@ -718,6 +730,25 @@ function latestJobActivityAt(job: Job) {
 
 function sortByLatestActivity<T>(items: T[], getActivityAt: (item: T) => number) {
   return [...items].sort((first, second) => getActivityAt(second) - getActivityAt(first));
+}
+
+function groupConversationsByJob(conversations: JobConversation[], jobs: Job[]): ConversationGroup[] {
+  const jobsById = new Map(jobs.map((job) => [job.id, job]));
+  const groups = new Map<string, ConversationGroup>();
+
+  for (const conversation of conversations) {
+    const group = groups.get(conversation.job_id) ?? {
+      jobId: conversation.job_id,
+      job: jobsById.get(conversation.job_id) ?? null,
+      conversations: [] as JobConversation[]
+    };
+    group.conversations.push(conversation);
+    groups.set(conversation.job_id, group);
+  }
+
+  return sortByLatestActivity([...groups.values()], (group) =>
+    group.conversations.reduce((latest, conversation) => Math.max(latest, latestConversationActivityAt(conversation)), 0)
+  );
 }
 
 function requestNotificationTab(notification: Notification): RequestFilter | null {
@@ -1140,15 +1171,21 @@ function RatingPrompt({
 
 function ActiveEngagementCard({
   conversation,
+  expanded = true,
+  groupSize = 1,
   job,
   onChanged,
   onOpenChat,
+  onToggle,
   onViewProfile
 }: {
   conversation: JobConversation;
+  expanded?: boolean;
+  groupSize?: number;
   job?: Job;
   onChanged: () => void;
   onOpenChat: (conversation: JobConversation) => void;
+  onToggle?: () => void;
   onViewProfile: (application: Application) => void;
 }) {
   const token = useRequireAuth();
@@ -1233,68 +1270,84 @@ function ActiveEngagementCard({
 
   return (
     <article className="rounded-[10px] border-[0.5px] border-[#b8d1da] bg-white p-4 sm:p-6 lg:p-7">
-      <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
-        <div className="flex min-w-0 items-start gap-4">
-          <PersonAvatar avatarUrl={conversation.professional?.avatar_url} />
-          <div className="min-w-0">
-            <h2 className="text-[15px] font-medium leading-[1.5] text-[#5e5e5e]">
-              {conversation.professional?.first_name} {conversation.professional?.last_name}
-            </h2>
-            <p className="mt-1 inline-flex items-center gap-1 text-[13px] text-[#5e5e5e]">
-              <MapPin size={15} className="text-[#196c88]" />
-              {profileLocation(application)}
-            </p>
+      <div className="rounded-[8px] border border-[#bdebd1] bg-[#f3fef3] p-4">
+        <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+          <div className="flex min-w-0 items-start gap-4">
+            <PersonAvatar avatarUrl={conversation.professional?.avatar_url} />
+            <div className="min-w-0">
+              <h2 className="text-[15px] font-medium leading-[1.5] text-[#5e5e5e]">
+                {conversation.professional?.first_name} {conversation.professional?.last_name}
+              </h2>
+              <p className="mt-1 inline-flex items-center gap-1 text-[13px] text-[#5e5e5e]">
+                <MapPin size={15} className="text-[#196c88]" />
+                {profileLocation(application)}
+              </p>
+            </div>
+          </div>
+          <div className="flex flex-col items-start gap-2 text-[14px] font-medium leading-[1.5] lg:ml-auto lg:min-w-[280px]">
+            <div className="grid grid-cols-[20px_minmax(0,1fr)] items-center gap-2 text-[#196c88]">
+              <BriefcaseBusiness size={17} />
+              <p>Work: <span className={workState.colorClass}>{workState.label}</span></p>
+            </div>
+            <div className="grid grid-cols-[20px_minmax(0,1fr)] items-center gap-2 text-[#196c88]">
+              <Clock3 size={17} />
+              <p>Started: <span className="font-light text-[#a4a4a4]">{formatDisplayDate(startedAt)}</span></p>
+            </div>
           </div>
         </div>
-        <div className="flex flex-col items-start gap-2 text-[14px] font-medium leading-[1.5] lg:ml-auto lg:min-w-[280px]">
-          <div className="grid grid-cols-[20px_minmax(0,1fr)] items-center gap-2 text-[#196c88]">
-            <BriefcaseBusiness size={17} />
-            <p>Work: <span className={workState.colorClass}>{workState.label}</span></p>
+
+        {categories.length > 0 ? (
+          <div className="mt-5 flex flex-wrap gap-3">
+            {categories.slice(0, 6).map((category) => <RequestCategoryPill key={category.id}>{category.name}</RequestCategoryPill>)}
           </div>
-          <div className="grid grid-cols-[20px_minmax(0,1fr)] items-center gap-2 text-[#196c88]">
-            <Clock3 size={17} />
-            <p>Started: <span className="font-light text-[#a4a4a4]">{formatDisplayDate(startedAt)}</span></p>
-          </div>
-        </div>
-      </div>
-
-      {categories.length > 0 ? (
-        <div className="mt-5 flex flex-wrap gap-3">
-          {categories.slice(0, 6).map((category) => <RequestCategoryPill key={category.id}>{category.name}</RequestCategoryPill>)}
-        </div>
-      ) : null}
-
-      <div className="mt-6 grid gap-5 text-[14px] leading-[1.5] sm:grid-cols-3">
-        <div>
-          <p className="font-medium text-[#5e5e5e]">Work type</p>
-          <p className="mt-2 font-light text-[#a4a4a4]">{workType}</p>
-        </div>
-        <div>
-          <p className="font-medium text-[#5e5e5e]">Date Started</p>
-          <p className="mt-2 font-light text-[#a4a4a4]">{formatDisplayDate(startedAt)}</p>
-        </div>
-        <div>
-          <p className="font-medium text-[#5e5e5e]">Expected Completion Date</p>
-          <p className="mt-2 font-light text-[#a4a4a4]">{formatDisplayDate(expectedAt)}</p>
-        </div>
-      </div>
-
-      <div className="mt-6 flex flex-wrap gap-3">
-        <Button className="h-11 min-w-[132px] rounded-[5px] px-5 py-0" onClick={() => onOpenChat(conversation)} type="button">
-          Chat
-        </Button>
-        <Button className="h-11 min-w-[132px] rounded-[5px] border-[#196c88] px-5 py-0 text-[#196c88]" onClick={() => onViewProfile(application)} type="button" variant="secondary">
-          View Profile
-        </Button>
-        {reviewSubmitted ? (
-          <span className="inline-flex h-11 items-center gap-2 text-[13px] font-medium text-[#b8d1da]">
-            <Star className="fill-[#f4a422] text-[#f4a422]" size={18} strokeWidth={0} />
-            Rated
-          </span>
         ) : null}
-        <MoreButton aria-label="More active job actions" />
+
+        <div className="mt-6 grid gap-5 text-[14px] leading-[1.5] sm:grid-cols-3">
+          <div>
+            <p className="font-medium text-[#5e5e5e]">Work type</p>
+            <p className="mt-2 font-light text-[#a4a4a4]">{workType}</p>
+          </div>
+          <div>
+            <p className="font-medium text-[#5e5e5e]">Date Started</p>
+            <p className="mt-2 font-light text-[#a4a4a4]">{formatDisplayDate(startedAt)}</p>
+          </div>
+          <div>
+            <p className="font-medium text-[#5e5e5e]">Expected Completion Date</p>
+            <p className="mt-2 font-light text-[#a4a4a4]">{formatDisplayDate(expectedAt)}</p>
+          </div>
+        </div>
+
+        <div className="mt-6 flex flex-wrap gap-3">
+          <Button className="relative h-11 min-w-[132px] rounded-[5px] px-5 py-0" onClick={() => onOpenChat(conversation)} type="button">
+            Chat
+            {conversation.unread_message_count ? <span aria-hidden="true" className="absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full bg-[#bf1d1d]" /> : null}
+          </Button>
+          <Button className="h-11 min-w-[132px] rounded-[5px] border-[#196c88] px-5 py-0 text-[#196c88]" onClick={() => onViewProfile(application)} type="button" variant="secondary">
+            View Profile
+          </Button>
+          {reviewSubmitted ? (
+            <span className="inline-flex h-11 items-center gap-2 text-[13px] font-medium text-[#b8d1da]">
+              <Star className="fill-[#f4a422] text-[#f4a422]" size={18} strokeWidth={0} />
+              Rated
+            </span>
+          ) : null}
+          <MoreButton aria-label="More active job actions" />
+          {onToggle ? (
+            <button
+              aria-expanded={expanded}
+              aria-label={expanded ? "Collapse job details" : "Expand job details"}
+              className="ml-auto grid h-10 w-10 place-items-center rounded-full border border-[#196c88] text-[#196c88] transition hover:bg-[#f2f6f8] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#196c88]"
+              onClick={onToggle}
+              type="button"
+            >
+              <ChevronDown className={`transition-transform ${expanded ? "rotate-180" : ""}`} size={20} />
+            </button>
+          ) : null}
+        </div>
       </div>
 
+      {expanded ? (
+      <>
       <section className="mt-7 grid gap-8 rounded-[8px] border border-[#b8d1da] p-4 sm:p-6 lg:grid-cols-2">
         <div>
           <h3 className="text-[22px] font-medium leading-[1.3] text-[#5e5e5e] sm:text-[26px]">Job Details</h3>
@@ -1304,7 +1357,7 @@ function ActiveEngagementCard({
               <p className="mt-2 text-[14px] font-light leading-6 text-[#a4a4a4]">{job?.description ?? conversation.application?.pitch ?? "No description available"}</p>
             </div>
             <p className="text-[15px] text-[#5e5e5e]">
-              Number of professionals Hired: <span className="ml-3 text-[20px] font-medium text-[#196c88]">1</span>
+              Number of professionals Hired: <span className="ml-3 text-[20px] font-medium text-[#196c88]">{groupSize}</span>
             </p>
             <p className="text-[15px] text-[#5e5e5e]">
               Agreed Price: <span className="ml-3 text-[20px] font-medium text-[#196c88]">{formatMoney(agreedPrice, job?.currency ?? "#")}</span>
@@ -1464,7 +1517,58 @@ function ActiveEngagementCard({
           Review Submitted
         </div>
       ) : null}
+      </>
+      ) : null}
     </article>
+  );
+}
+
+function ClientActiveJobGroupCard({
+  group,
+  jobs,
+  onChanged,
+  onOpenChat,
+  onViewProfile
+}: {
+  group: ConversationGroup;
+  jobs: Job[];
+  onChanged: () => void;
+  onOpenChat: (conversation: JobConversation) => void;
+  onViewProfile: (application: Application) => void;
+}) {
+  const [expandedConversationId, setExpandedConversationId] = useState(group.conversations[0]?.id ?? "");
+
+  useEffect(() => {
+    setExpandedConversationId((current) => {
+      if (!current || group.conversations.some((conversation) => conversation.id === current)) return current;
+      return group.conversations[0]?.id ?? "";
+    });
+  }, [group.conversations]);
+
+  if (group.conversations.length === 0) return null;
+
+  return (
+    <section className="rounded-[10px] border border-[#b8d1da] bg-white/70 p-3 sm:p-4">
+      <h2 className="mb-3 text-[20px] font-semibold text-[#5e5e5e]">{group.job?.title ?? "Job request"}</h2>
+      <div className="space-y-4">
+        {group.conversations.map((conversation) => {
+          const job = group.job ?? jobs.find((item) => item.id === conversation.job_id);
+          return (
+            <ActiveEngagementCard
+              conversation={conversation}
+              expanded={expandedConversationId === conversation.id}
+              groupSize={group.conversations.length}
+              job={job ?? undefined}
+              key={conversation.id}
+              onChanged={onChanged}
+              onOpenChat={onOpenChat}
+              onToggle={() => setExpandedConversationId((current) => current === conversation.id ? "" : conversation.id)}
+              onViewProfile={onViewProfile}
+            />
+          );
+        })}
+      </div>
+    </section>
   );
 }
 
@@ -1588,11 +1692,12 @@ function ApplicationRow({
               {conversation && !isDeclined ? (
                 <button
                   aria-label={`Open chat with ${application.professional?.first_name ?? "applicant"}`}
-                  className="grid h-8 w-8 place-items-center rounded-full text-[#196c88] transition hover:bg-[#f2f6f8] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#196c88]"
+                  className="relative grid h-8 w-8 place-items-center rounded-full text-[#196c88] transition hover:bg-[#f2f6f8] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#196c88]"
                   onClick={() => onOpenChat(conversation)}
                   type="button"
                 >
                   <MessagesSquare size={18} strokeWidth={1.7} />
+                  {conversation.unread_message_count ? <span aria-hidden="true" className="absolute right-0.5 top-0.5 h-2 w-2 rounded-full bg-[#bf1d1d]" /> : null}
                 </button>
               ) : null}
               <ApplicationStatusPill status={status} />
@@ -1863,6 +1968,8 @@ function ClientJobsContent() {
   const showToast = useToast();
   const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
   const [activeFilter, setActiveFilter] = useState<RequestFilter>("all");
+  const [requestPage, setRequestPage] = useState(1);
+  const [requestPageLoading, setRequestPageLoading] = useState(false);
   const [profileApplication, setProfileApplication] = useState<Application | null>(null);
   const [chatConversation, setChatConversation] = useState<JobConversation | null>(null);
   const [openedConversationId, setOpenedConversationId] = useState("");
@@ -1876,13 +1983,15 @@ function ClientJobsContent() {
   const jobIdParam = searchParams.get("job_id");
   const conversationIdParam = searchParams.get("conversation_id");
   const activeConversations = sortByLatestActivity(
-    conversations.filter((conversation) => Boolean(conversation.upfront_payment_made_at) && !isCompletedConversation(conversation)),
+    conversations.filter((conversation) => Boolean(conversation.upfront_payment_made_at) && conversationStarted(conversation) && !isCompletedConversation(conversation)),
     latestConversationActivityAt
   );
   const completedConversations = sortByLatestActivity(
     conversations.filter((conversation) => Boolean(conversation.upfront_payment_made_at) && isCompletedConversation(conversation)),
     latestConversationActivityAt
   );
+  const activeConversationGroups = groupConversationsByJob(activeConversations, jobs);
+  const completedConversationGroups = groupConversationsByJob(completedConversations, jobs);
   const rejectedApplications = sortByLatestActivity(
     jobs.flatMap((job) =>
       (hydratedRejectedApplicationsByJob[job.id] ?? rejectedApplicationSummaries(job))
@@ -1893,8 +2002,8 @@ function ClientJobsContent() {
   const sortedJobs = sortByLatestActivity(jobs, latestJobActivityAt);
   const filterCounts = {
     all: jobs.length,
-    active: activeConversations.length,
-    completed: completedConversations.length,
+    active: activeConversationGroups.length,
+    completed: completedConversationGroups.length,
     rejected: rejectedApplications.length
   };
   const filteredJobs = sortedJobs.filter((job) => jobMatchesFilter(job, activeFilter));
@@ -1918,10 +2027,13 @@ function ClientJobsContent() {
     completed: requestNotificationDots.completed || (requestTabSeenAt.completed > 0 && latestRequestTabActivityAt.completed > requestTabSeenAt.completed),
     rejected: requestNotificationDots.rejected || (requestTabSeenAt.rejected > 0 && latestRequestTabActivityAt.rejected > requestTabSeenAt.rejected)
   };
-  const filteredItemCount = activeFilter === "active" ? activeConversations.length : activeFilter === "completed" ? completedConversations.length : activeFilter === "rejected" ? rejectedApplications.length : filteredJobs.length;
+  const filteredItemCount = activeFilter === "active" ? activeConversationGroups.length : activeFilter === "completed" ? completedConversationGroups.length : activeFilter === "rejected" ? rejectedApplications.length : filteredJobs.length;
   const hasFilteredItems = filteredItemCount > 0;
   const requestListFilter = activeFilter === "all";
   const requestsBusy = loading || refreshing || ((activeFilter === "active" || activeFilter === "completed") && conversationsLoading) || (activeFilter === "rejected" && rejectedLoading);
+  const requestPageCount = Math.max(1, Math.ceil(filteredJobs.length / REQUESTS_PAGE_SIZE));
+  const visibleFilteredJobs = filteredJobs.slice((requestPage - 1) * REQUESTS_PAGE_SIZE, requestPage * REQUESTS_PAGE_SIZE);
+  const requestWindowBusy = requestsBusy || requestPageLoading;
   const selectedJob = jobs.find((job) => job.id === selectedJobId) ?? null;
 
   const loadRequestNotifications = useCallback(() => {
@@ -1954,6 +2066,14 @@ function ClientJobsContent() {
   function selectRequestFilter(filter: RequestFilter) {
     setActiveFilter(filter);
     markRequestTabSeen(filter);
+  }
+
+  function changeRequestPage(page: number) {
+    const nextPage = Math.min(requestPageCount, Math.max(1, page));
+    if (nextPage === requestPage) return;
+    setRequestPage(nextPage);
+    setSelectedJobId(null);
+    setRequestPageLoading(true);
   }
 
   function refreshAll() {
@@ -2094,15 +2214,31 @@ function ClientJobsContent() {
   }, [jobIdParam]);
 
   useEffect(() => {
+    setRequestPage(1);
+    setRequestPageLoading(false);
+  }, [activeFilter]);
+
+  useEffect(() => {
+    if (requestPage <= requestPageCount) return;
+    setRequestPage(requestPageCount);
+  }, [requestPage, requestPageCount]);
+
+  useEffect(() => {
+    if (!requestPageLoading) return;
+    const timer = window.setTimeout(() => setRequestPageLoading(false), 220);
+    return () => window.clearTimeout(timer);
+  }, [requestPageLoading]);
+
+  useEffect(() => {
     if (!selectedJobId) return;
     if (!requestListFilter) {
       setSelectedJobId(null);
       return;
     }
-    if (!filteredJobs.some((job) => job.id === selectedJobId)) {
+    if (!visibleFilteredJobs.some((job) => job.id === selectedJobId)) {
       setSelectedJobId(null);
     }
-  }, [filteredJobs, requestListFilter, selectedJobId]);
+  }, [requestListFilter, selectedJobId, visibleFilteredJobs]);
 
   function openJobActivity(jobId: string) {
     setSelectedJobId(jobId);
@@ -2156,37 +2292,31 @@ function ClientJobsContent() {
         {activeFilter === "active" ? (
           <div className="space-y-4">
             {requestsBusy ? Array.from({ length: 3 }).map((_, index) => <RequestCardSkeleton key={index} />) : null}
-            {!requestsBusy ? activeConversations.map((conversation) => {
-              const job = jobs.find((item) => item.id === conversation.job_id);
-              return (
-                <ActiveEngagementCard
-                  conversation={conversation}
-                  job={job}
-                  key={conversation.id}
-                  onChanged={refreshAll}
-                  onOpenChat={(item) => setChatConversation(withConversationJob(item))}
-                  onViewProfile={setProfileApplication}
-                />
-              );
-            }) : null}
+            {!requestsBusy ? activeConversationGroups.map((group) => (
+              <ClientActiveJobGroupCard
+                group={group}
+                jobs={jobs}
+                key={group.jobId}
+                onChanged={refreshAll}
+                onOpenChat={(item) => setChatConversation(withConversationJob(item))}
+                onViewProfile={setProfileApplication}
+              />
+            )) : null}
           </div>
         ) : null}
         {activeFilter === "completed" ? (
           <div className="space-y-4">
             {requestsBusy ? Array.from({ length: 3 }).map((_, index) => <RequestCardSkeleton key={index} />) : null}
-            {!requestsBusy ? completedConversations.map((conversation) => {
-              const job = jobs.find((item) => item.id === conversation.job_id);
-              return (
-                <ActiveEngagementCard
-                  conversation={conversation}
-                  job={job}
-                  key={conversation.id}
-                  onChanged={refreshAll}
-                  onOpenChat={(item) => setChatConversation(withConversationJob(item))}
-                  onViewProfile={setProfileApplication}
-                />
-              );
-            }) : null}
+            {!requestsBusy ? completedConversationGroups.map((group) => (
+              <ClientActiveJobGroupCard
+                group={group}
+                jobs={jobs}
+                key={group.jobId}
+                onChanged={refreshAll}
+                onOpenChat={(item) => setChatConversation(withConversationJob(item))}
+                onViewProfile={setProfileApplication}
+              />
+            )) : null}
           </div>
         ) : null}
         {activeFilter === "rejected" ? (
@@ -2198,25 +2328,64 @@ function ClientJobsContent() {
           </div>
         ) : null}
         {requestListFilter ? (
-          <div className={`grid gap-4 md:gap-[18px] ${hasFilteredItems && !requestsBusy ? "xl:grid-cols-[minmax(0,710px)_minmax(340px,452px)]" : ""}`}>
-            <div className="space-y-3 md:space-y-4">
-              {requestsBusy ? Array.from({ length: 4 }).map((_, index) => <RequestCardSkeleton key={index} />) : null}
-              {!requestsBusy ? filteredJobs.map((job) => {
-                return (
-                  <RequestCard
-                    closeActionOpen={closeActionJobId === job.id}
-                    closing={closingJobId === job.id}
-                    job={job}
-                    key={job.id}
-                    onCloseRequest={() => setCloseTarget(job)}
-                    onSelect={() => openJobActivity(job.id)}
-                    onToggleCloseAction={() => setCloseActionJobId((current) => current === job.id ? "" : job.id)}
-                    selected={selectedJobId === job.id}
-                  />
-                );
-              }) : null}
+          <div className={`grid gap-4 md:gap-[18px] ${hasFilteredItems && !requestWindowBusy ? "xl:grid-cols-[minmax(0,710px)_minmax(340px,452px)]" : ""}`}>
+            <div>
+              <div className="space-y-3 md:space-y-4">
+                {requestWindowBusy ? Array.from({ length: REQUESTS_PAGE_SIZE }).map((_, index) => <RequestCardSkeleton key={index} />) : null}
+                {!requestWindowBusy ? visibleFilteredJobs.map((job) => {
+                  return (
+                    <RequestCard
+                      closeActionOpen={closeActionJobId === job.id}
+                      closing={closingJobId === job.id}
+                      job={job}
+                      key={job.id}
+                      onCloseRequest={() => setCloseTarget(job)}
+                      onSelect={() => openJobActivity(job.id)}
+                      onToggleCloseAction={() => setCloseActionJobId((current) => current === job.id ? "" : job.id)}
+                      selected={selectedJobId === job.id}
+                    />
+                  );
+                }) : null}
+              </div>
+              {!requestsBusy && requestPageCount > 1 ? (
+                <div className="mt-7 flex items-center justify-center gap-4 text-[#196c88]">
+                  <button
+                    aria-label="Previous requests page"
+                    className="grid h-8 w-8 place-items-center rounded-full transition hover:bg-[#f2f6f8] disabled:cursor-not-allowed disabled:opacity-40"
+                    disabled={requestPage === 1 || requestPageLoading}
+                    onClick={() => changeRequestPage(requestPage - 1)}
+                    type="button"
+                  >
+                    <ChevronLeft size={20} />
+                  </button>
+                  {Array.from({ length: requestPageCount }).map((_, index) => {
+                    const page = index + 1;
+                    return (
+                      <button
+                        aria-current={requestPage === page ? "page" : undefined}
+                        className={`grid h-8 w-8 place-items-center rounded-[5px] text-sm font-semibold transition disabled:cursor-not-allowed ${requestPage === page ? "bg-[#196c88] text-white" : "text-[#196c88] hover:bg-[#f2f6f8]"}`}
+                        disabled={requestPageLoading}
+                        key={page}
+                        onClick={() => changeRequestPage(page)}
+                        type="button"
+                      >
+                        {page}
+                      </button>
+                    );
+                  })}
+                  <button
+                    aria-label="Next requests page"
+                    className="grid h-8 w-8 place-items-center rounded-full transition hover:bg-[#f2f6f8] disabled:cursor-not-allowed disabled:opacity-40"
+                    disabled={requestPage === requestPageCount || requestPageLoading}
+                    onClick={() => changeRequestPage(requestPage + 1)}
+                    type="button"
+                  >
+                    <ChevronRight size={20} />
+                  </button>
+                </div>
+              ) : null}
             </div>
-            {hasFilteredItems && !requestsBusy ? (
+            {hasFilteredItems && !requestWindowBusy ? (
               <div
                 className={`${selectedJobId ? "fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/10 px-3 pb-4 pt-4 backdrop-blur-[2px] xl:static xl:z-auto xl:block xl:overflow-visible xl:bg-transparent xl:p-0 xl:backdrop-blur-none" : "hidden xl:block"}`}
               >

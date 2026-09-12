@@ -22,6 +22,25 @@ import type { Application, Job, JobConversation, JobView } from "@/types";
 let cachedClientJobs: Job[] = [];
 let cachedMatchedJobs: Job[] = [];
 let cachedMyApplications: Application[] = [];
+const LIST_AUTO_REFRESH_MS = 30000;
+
+type RefreshOptions = { silent?: boolean };
+
+function shouldAutoRefresh() {
+  return typeof document === "undefined" || document.visibilityState === "visible";
+}
+
+function useAutoRefresh(refresh: (options?: RefreshOptions) => void | Promise<void>, enabled: boolean) {
+  useEffect(() => {
+    if (!enabled) return;
+
+    const timer = window.setInterval(() => {
+      if (shouldAutoRefresh()) void refresh({ silent: true });
+    }, LIST_AUTO_REFRESH_MS);
+
+    return () => window.clearInterval(timer);
+  }, [enabled, refresh]);
+}
 
 export function useClientJobs() {
   const token = useRequireAuth();
@@ -30,12 +49,14 @@ export function useClientJobs() {
   const [loading, setLoading] = useState(cachedClientJobs.length === 0);
   const [refreshing, setRefreshing] = useState(false);
 
-  const refresh = useCallback(() => {
+  const refresh = useCallback((options: RefreshOptions = {}) => {
     if (!token) return;
-    if (cachedClientJobs.length === 0) setLoading(true);
-    setRefreshing(true);
+    if (!options.silent) {
+      if (cachedClientJobs.length === 0) setLoading(true);
+      setRefreshing(true);
+    }
     setError("");
-    getClientJobs(token)
+    return getClientJobs(token)
       .then((data) => {
         const jobs = Array.isArray(data.jobs) ? data.jobs : [];
         cachedClientJobs = jobs;
@@ -43,12 +64,17 @@ export function useClientJobs() {
       })
       .catch((err) => setError(err instanceof Error ? err.message : "Could not load jobs"))
       .finally(() => {
-        setLoading(false);
-        setRefreshing(false);
+        if (!options.silent) {
+          setLoading(false);
+          setRefreshing(false);
+        }
       });
   }, [token]);
 
-  useEffect(() => refresh(), [refresh]);
+  useEffect(() => {
+    void refresh();
+  }, [refresh]);
+  useAutoRefresh(refresh, Boolean(token));
 
   async function publishJob(payload: CreateJobPayload) {
     if (!token) throw new Error("You need to log in again");
@@ -75,20 +101,25 @@ export function useMatchedJobs() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(cachedMatchedJobs.length === 0);
 
-  const refresh = useCallback(() => {
+  const refresh = useCallback((options: RefreshOptions = {}) => {
     if (!token) return;
-    if (cachedMatchedJobs.length === 0) setLoading(true);
-    getMatchedJobs(token)
+    if (!options.silent && cachedMatchedJobs.length === 0) setLoading(true);
+    return getMatchedJobs(token)
       .then((data) => {
         const jobs = Array.isArray(data.jobs) ? data.jobs : [];
         cachedMatchedJobs = jobs;
         setJobs(jobs);
       })
       .catch((err) => setError(err instanceof Error ? err.message : "Could not load matched jobs"))
-      .finally(() => setLoading(false));
+      .finally(() => {
+        if (!options.silent) setLoading(false);
+      });
   }, [token]);
 
-  useEffect(() => refresh(), [refresh]);
+  useEffect(() => {
+    void refresh();
+  }, [refresh]);
+  useAutoRefresh(refresh, Boolean(token));
 
   async function apply(jobId: string, pitch: string, proposedRate?: number | null, estimatedDays?: number | null, referenceImageUrls: string[] = [], proposedStartAt?: string | null) {
     if (!token) throw new Error("You need to log in again");
@@ -104,20 +135,25 @@ export function useMyApplications() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(cachedMyApplications.length === 0);
 
-  const refresh = useCallback(() => {
+  const refresh = useCallback((options: RefreshOptions = {}) => {
     if (!token) return;
-    if (cachedMyApplications.length === 0) setLoading(true);
-    getMyApplications(token)
+    if (!options.silent && cachedMyApplications.length === 0) setLoading(true);
+    return getMyApplications(token)
       .then((data) => {
         const applications = Array.isArray(data.applications) ? data.applications : [];
         cachedMyApplications = applications;
         setApplications(applications);
       })
       .catch((err) => setError(err instanceof Error ? err.message : "Could not load applications"))
-      .finally(() => setLoading(false));
+      .finally(() => {
+        if (!options.silent) setLoading(false);
+      });
   }, [token]);
 
-  useEffect(() => refresh(), [refresh]);
+  useEffect(() => {
+    void refresh();
+  }, [refresh]);
+  useAutoRefresh(refresh, Boolean(token));
 
   async function saveApplication(applicationId: string, payload: { pitch?: string; proposed_rate?: number | null; estimated_days?: number | null; reference_image_urls?: string[] }) {
     if (!token) throw new Error("You need to log in again");
@@ -141,21 +177,26 @@ export function useJobEngagement(jobId: string | null) {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
-  const refresh = useCallback(() => {
+  const refresh = useCallback((options: RefreshOptions = {}) => {
     if (!token || !jobId) return;
-    setLoading(true);
+    if (!options.silent) setLoading(true);
     setError("");
-    Promise.all([getJobApplications(token, jobId), getJobViews(token, jobId), getConversations(token, jobId)])
+    return Promise.all([getJobApplications(token, jobId), getJobViews(token, jobId), getConversations(token, jobId)])
       .then(([applicationData, viewData, conversationData]) => {
         setApplications(Array.isArray(applicationData.applications) ? applicationData.applications : []);
         setViews(Array.isArray(viewData.views) ? viewData.views : []);
         setConversations(Array.isArray(conversationData.conversations) ? conversationData.conversations : []);
       })
       .catch((err) => setError(err instanceof Error ? err.message : "Could not load job activity"))
-      .finally(() => setLoading(false));
+      .finally(() => {
+        if (!options.silent) setLoading(false);
+      });
   }, [jobId, token]);
 
-  useEffect(() => refresh(), [refresh]);
+  useEffect(() => {
+    void refresh();
+  }, [refresh]);
+  useAutoRefresh(refresh, Boolean(token && jobId));
 
   async function inviteToChat(applicationId: string) {
     if (!token || !jobId) throw new Error("Select a job first");

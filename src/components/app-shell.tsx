@@ -192,7 +192,7 @@ export function AppShell({
   const isClientShell = role === "client";
   const isProfessionalShell = role === "professional";
   const isModernShell = isClientShell || isProfessionalShell;
-  const isClientHome = isClientShell && variant === "client-home";
+  const isDashboardHome = isModernShell && variant === "client-home";
   const displayName = profile ? `${profile.first_name} ${profile.last_name}`.trim() : "Profile";
   const phoneStatus = profile?.phone_verified ? "Phone Verified" : "Phone Not Verified";
 
@@ -440,7 +440,7 @@ export function AppShell({
             </div>
           </>
         ) : null}
-        <main className={isClientHome ? "" : "mx-auto max-w-[1180px] px-4 py-6 sm:px-6 sm:py-8 lg:px-10 xl:px-0"}>{children}</main>
+        <main className={isDashboardHome ? "" : "mx-auto max-w-[1180px] px-4 py-6 sm:px-6 sm:py-8 lg:px-10 xl:px-0"}>{children}</main>
       </div>
     );
   }

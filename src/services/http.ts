@@ -1,4 +1,5 @@
-import { getAppSessionId } from "@/lib/session";
+import { getAppSessionId, getRefreshToken, saveCachedProfile, saveSession } from "@/lib/session";
+import type { Profile } from "@/types";
 
 const API_URL = (process.env.NEXT_PUBLIC_API_URL ?? (process.env.NODE_ENV === "development" ? "http://localhost:3000" : "")).replace(/\/$/, "");
 
@@ -25,9 +26,19 @@ type CacheEntry = {
   data: unknown;
 };
 
+type RefreshResponse = {
+  session?: {
+    access_token?: string;
+    refresh_token?: string | null;
+  };
+  profile?: Profile;
+  app_session_id?: string;
+};
+
 const DEFAULT_GET_CACHE_TTL_MS = 15_000;
 const responseCache = new Map<string, CacheEntry>();
 const pendingRequests = new Map<string, Promise<unknown>>();
+let pendingSessionRefresh: Promise<string | null> | null = null;
 
 function requestUrl(path: string) {
   if (!API_URL) {
@@ -38,7 +49,7 @@ function requestUrl(path: string) {
 }
 
 function isSessionFailure(path: string, response: Response) {
-  return response.status === 401 && !path.includes("/api/auth/login");
+  return response.status === 401 && !path.includes("/api/auth/login") && !path.includes("/api/auth/refresh");
 }
 
 function notifySessionExpired() {
@@ -58,6 +69,67 @@ function appendAuthHeaders(headers: Record<string, string>, token?: string | nul
   if (appSessionId) {
     headers["X-Accordia-Session-Id"] = appSessionId;
   }
+}
+
+function notifySessionRenewed(data: Required<Pick<RefreshResponse, "app_session_id" | "profile">> & { session: { access_token: string; refresh_token?: string | null } }) {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(new CustomEvent("accordia:session-renewed", {
+    detail: {
+      accessToken: data.session.access_token,
+      appSessionId: data.app_session_id,
+      profile: data.profile,
+      refreshToken: data.session.refresh_token,
+      role: data.profile.role
+    }
+  }));
+}
+
+async function renewSession() {
+  if (typeof window === "undefined") return null;
+  if (pendingSessionRefresh) return pendingSessionRefresh;
+
+  pendingSessionRefresh = (async () => {
+    const refreshToken = getRefreshToken();
+    const appSessionId = getAppSessionId();
+    if (!refreshToken || !appSessionId) return null;
+
+    let response: Response;
+    try {
+      response = await fetch(requestUrl("/api/auth/refresh"), {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Accordia-Session-Id": appSessionId
+        },
+        body: JSON.stringify({ refresh_token: refreshToken }),
+        cache: "no-store"
+      });
+    } catch {
+      return null;
+    }
+
+    const data = await response.json().catch(() => ({})) as RefreshResponse;
+    if (!response.ok || !data.session?.access_token || !data.profile || !data.app_session_id) return null;
+
+    const nextRefreshToken = data.session.refresh_token ?? refreshToken;
+    saveSession(data.session.access_token, data.profile.role, data.app_session_id, nextRefreshToken);
+    saveCachedProfile(data.profile);
+    clearApiCache();
+    notifySessionRenewed({
+      app_session_id: data.app_session_id,
+      profile: data.profile,
+      session: {
+        access_token: data.session.access_token,
+        refresh_token: nextRefreshToken
+      }
+    });
+
+    return data.session.access_token;
+  })().finally(() => {
+    pendingSessionRefresh = null;
+  });
+
+  return pendingSessionRefresh;
 }
 
 function logSlowRequest(path: string, durationMs: number) {
@@ -107,9 +179,10 @@ function friendlyApiMessage(path: string, response: Response, data: Record<strin
 
 export async function apiFetch<T>(path: string, options: RequestOptions = {}): Promise<T> {
   const method = options.method ?? "GET";
+  let activeToken = options.token;
   const canUseMemoryCache = method === "GET";
   const ttlMs = options.cacheTtlMs ?? DEFAULT_GET_CACHE_TTL_MS;
-  const key = cacheKey(path, options.token);
+  const key = cacheKey(path, activeToken);
 
   if (canUseMemoryCache && ttlMs > 0) {
     const cached = responseCache.get(key);
@@ -121,13 +194,12 @@ export async function apiFetch<T>(path: string, options: RequestOptions = {}): P
     if (pending) return pending as Promise<T>;
   }
 
-  const headers: Record<string, string> = {
-    "Content-Type": "application/json"
-  };
+  async function executeRequest(allowSessionRenewal = true): Promise<T> {
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json"
+    };
 
-  appendAuthHeaders(headers, options.token);
-
-  async function executeRequest() {
+    appendAuthHeaders(headers, activeToken);
     const startedAt = performance.now();
     let response: Response;
 
@@ -148,6 +220,13 @@ export async function apiFetch<T>(path: string, options: RequestOptions = {}): P
     if (!response.ok) {
       const message = friendlyApiMessage(path, response, data);
       if (isSessionFailure(path, response)) {
+        if (allowSessionRenewal) {
+          const renewedToken = await renewSession();
+          if (renewedToken) {
+            activeToken = renewedToken;
+            return executeRequest(false);
+          }
+        }
         notifySessionExpired();
         throw new SessionExpiredError(message);
       }
@@ -169,37 +248,50 @@ export async function apiFetch<T>(path: string, options: RequestOptions = {}): P
 }
 
 export async function apiFormData<T>(path: string, formData: FormData, token?: string | null): Promise<T> {
-  const headers: Record<string, string> = {};
+  let activeToken = token;
 
-  appendAuthHeaders(headers, token);
+  async function executeRequest(allowSessionRenewal = true): Promise<T> {
+    const headers: Record<string, string> = {};
 
-  let response: Response;
+    appendAuthHeaders(headers, activeToken);
 
-  try {
-    const startedAt = performance.now();
-    response = await fetch(requestUrl(path), {
-      method: "POST",
-      headers,
-      body: formData,
-      cache: "no-store"
-    });
-    logSlowRequest(path, performance.now() - startedAt);
-  } catch {
-    throw new Error("Unable to connect. Check your internet connection and try again.");
-  }
+    let response: Response;
 
-  const data = await response.json().catch(() => ({}));
-
-  if (!response.ok) {
-    const message = friendlyApiMessage(path, response, data);
-    if (isSessionFailure(path, response)) {
-      notifySessionExpired();
-      throw new SessionExpiredError(message);
+    try {
+      const startedAt = performance.now();
+      response = await fetch(requestUrl(path), {
+        method: "POST",
+        headers,
+        body: formData,
+        cache: "no-store"
+      });
+      logSlowRequest(path, performance.now() - startedAt);
+    } catch {
+      throw new Error("Unable to connect. Check your internet connection and try again.");
     }
-    throw new Error(message);
+
+    const data = await response.json().catch(() => ({}));
+
+    if (!response.ok) {
+      const message = friendlyApiMessage(path, response, data);
+      if (isSessionFailure(path, response)) {
+        if (allowSessionRenewal) {
+          const renewedToken = await renewSession();
+          if (renewedToken) {
+            activeToken = renewedToken;
+            return executeRequest(false);
+          }
+        }
+        notifySessionExpired();
+        throw new SessionExpiredError(message);
+      }
+      throw new Error(message);
+    }
+
+    clearApiCache();
+    return data as T;
   }
 
-  clearApiCache();
-  return data as T;
+  return executeRequest();
 }
 
