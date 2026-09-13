@@ -145,6 +145,17 @@ export type ConversationReview = {
   updated_at: string;
 };
 
+export type PaymentSummary = {
+  id: string;
+  payment_type: "job_upfront" | "job_final" | "appointment_full" | string;
+  status: "initialized" | "pending" | "success" | "failed" | "abandoned" | string;
+  provider_reference: string;
+  receipt_number?: string | null;
+  amount?: number | string | null;
+  currency?: string | null;
+  paid_at?: string | null;
+};
+
 export type Application = {
   id: string;
   job_id: string;
@@ -221,6 +232,7 @@ export type JobConversation = {
   completed_at?: string | null;
   final_payment_made_at?: string | null;
   final_payment_made_by?: string | null;
+  payments?: PaymentSummary[];
   deliverables?: DeliverableAttachment[];
   revision_note?: string | null;
   unread_message_count?: number;
