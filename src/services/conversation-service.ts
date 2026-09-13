@@ -1,5 +1,5 @@
 import { apiFetch, apiFormData } from "@/services/http";
-import type { ChatMessage, DeliverableAttachment, JobConversation, JobQuote, JobQuoteAttachment } from "@/types";
+import type { ChatMessage, DeliverableAttachment, JobConversation, JobQuote, JobQuoteAttachment, PaymentInitialization } from "@/types";
 
 export function getConversations(token: string, jobId?: string | null) {
   const query = jobId ? `?job_id=${encodeURIComponent(jobId)}` : "";
@@ -86,7 +86,7 @@ export function getConversationQuoteAttachmentAccess(token: string, conversation
 }
 
 export function hireConversationProfessional(token: string, conversationId: string) {
-  return apiFetch<{ conversation: JobConversation; application: JobConversation["application"] }>(`/api/conversations/${conversationId}/hire`, {
+  return apiFetch<{ conversation?: JobConversation; application?: JobConversation["application"]; payment?: PaymentInitialization }>(`/api/conversations/${conversationId}/hire`, {
     token,
     method: "POST",
     body: {}
@@ -120,11 +120,18 @@ export function getConversationDeliverableAccess(token: string, conversationId: 
 }
 
 export function makeConversationFinalPayment(token: string, conversationId: string) {
-  return apiFetch<{ conversation: JobConversation }>(`/api/conversations/${conversationId}/final-payment`, {
+  return apiFetch<{ conversation?: JobConversation; payment?: PaymentInitialization }>(`/api/conversations/${conversationId}/final-payment`, {
     token,
     method: "POST",
     body: {}
   });
+}
+
+export function verifyPaystackPayment(token: string, reference: string) {
+  return apiFetch<{ payment: { status: string; provider_reference: string; payment_type: string }; conversation?: JobConversation | null }>(
+    `/api/payments/verify?reference=${encodeURIComponent(reference)}`,
+    { token, cacheTtlMs: 0 }
+  );
 }
 
 export function confirmConversationCompletion(token: string, conversationId: string) {

@@ -766,6 +766,11 @@ export function ChatModal({
 
     try {
       const data = await hireConversationProfessional(token, jobConversation.id);
+      if (data.payment?.authorization_url) {
+        window.location.assign(data.payment.authorization_url);
+        return;
+      }
+      if (!data.conversation) throw new Error("Payment could not be completed. Please try again.");
       setCurrentConversation(data.conversation);
       setHireStep("paid");
       setPaymentNoticeOpen(true);
