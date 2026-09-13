@@ -1,5 +1,5 @@
 import { apiFetch } from "@/services/http";
-import type { Appointment, AppointmentAvailability, AppointmentRescheduleRequest, ChatMessage, ProfessionalInquiry } from "@/types";
+import type { Appointment, AppointmentAvailability, AppointmentRescheduleRequest, ChatMessage, PaymentInitialization, ProfessionalInquiry } from "@/types";
 
 export function getAvailability(token: string, professionalId?: string) {
   const params = new URLSearchParams();
@@ -97,5 +97,13 @@ export function respondAppointmentReschedule(
     token,
     method: "PATCH",
     body: { status }
+  });
+}
+
+export function payAppointment(token: string, appointmentId: string) {
+  return apiFetch<{ appointment?: Appointment; payment?: PaymentInitialization }>(`/api/appointments/${appointmentId}/payment`, {
+    token,
+    method: "POST",
+    body: {}
   });
 }

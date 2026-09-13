@@ -8,7 +8,7 @@ import { ChatModal } from "@/components/chat-modal";
 import { Button, PageLoader, ProfileAvatar, SkeletonBlock, Spinner, SurfaceModal } from "@/components/ui";
 import { useToast } from "@/components/toast";
 import { useProfile } from "@/hooks/use-auth";
-import { getAppointments, openAppointmentChat, updateAppointmentStatus } from "@/services/appointment-service";
+import { getAppointments, openAppointmentChat, payAppointment, updateAppointmentStatus } from "@/services/appointment-service";
 import type { Appointment, Category, ProfessionalInquiry, ProfessionalProfile } from "@/types";
 
 function formatDateTime(value: string) {
@@ -16,6 +16,14 @@ function formatDateTime(value: string) {
     dateStyle: "medium",
     timeStyle: "short"
   }).format(new Date(value));
+}
+
+function formatMoney(value: number, currency = "NGN") {
+  return new Intl.NumberFormat(undefined, {
+    currency,
+    maximumFractionDigits: 0,
+    style: "currency"
+  }).format(value);
 }
 
 function statusLabel(status: string) {
@@ -68,6 +76,15 @@ function workLabel(appointment: Appointment) {
 function workTone(appointment: Appointment) {
   if (appointment.status === "completed") return "text-[#0fa269]";
   return "text-[#f4a422]";
+}
+
+function appointmentFixedPrice(appointment: Appointment) {
+  if (!appointment.service) return null;
+  const priceMin = Number(appointment.service.price_min);
+  const priceMax = Number(appointment.service.price_max);
+  if (!Number.isFinite(priceMin) || priceMin <= 0) return null;
+  if (Number.isFinite(priceMax) && priceMax !== priceMin) return null;
+  return priceMin;
 }
 
 function CategoryPills({ categories }: { categories: Category[] }) {
@@ -238,6 +255,7 @@ function AppointmentCard({
   onCancelClick,
   onExpiredHelp,
   onOpenChat,
+  onPay,
   onViewProfile
 }: {
   appointment: Appointment;
@@ -246,6 +264,7 @@ function AppointmentCard({
   onCancelClick: (appointment: Appointment) => void;
   onExpiredHelp: (appointmentId: string) => void;
   onOpenChat: (appointment: Appointment) => void;
+  onPay: (appointment: Appointment) => void;
   onViewProfile: (appointment: Appointment) => void;
 }) {
   const categories = professionalCategories(appointment);
@@ -253,6 +272,9 @@ function AppointmentCard({
   const canCancelNow = cancellationOpen(appointment);
   const status = statusLabel(appointment.status === "requested" ? "pending" : appointment.status);
   const showChat = appointment.status === "accepted";
+  const paid = Boolean(appointment.payment_made_at);
+  const price = appointmentFixedPrice(appointment);
+  const canPay = !paid && !["cancelled", "declined"].includes(appointment.status);
 
   return (
     <article className="relative rounded-[7px] border border-[#b8d1da] bg-white p-5 sm:p-6 lg:p-7">
@@ -291,12 +313,35 @@ function AppointmentCard({
           <p className="mt-2 text-[14px] font-light text-[#a4a4a4]">Not specified</p>
         </div>
         <div>
-          <p className="text-[14px] font-semibold text-[#5e5e5e]">Appointment Schedule</p>
-          <p className="mt-2 text-[14px] font-light text-[#a4a4a4]">{formatDateTime(appointment.starts_at)} - {formatDateTime(appointment.ends_at)}</p>
+          <p className="text-[14px] font-semibold text-[#5e5e5e]">Payment</p>
+          <p className="mt-2 text-[14px] font-light text-[#a4a4a4]">
+            {price ? formatMoney(price, appointment.service?.currency ?? "NGN") : "Fixed service price required"}
+            {paid ? <span className="ml-2 font-semibold text-[#0fa269]">Paid</span> : null}
+          </p>
         </div>
       </div>
 
+      <div className="mt-5">
+        <p className="text-[14px] font-semibold text-[#5e5e5e]">Appointment Schedule</p>
+        <p className="mt-2 text-[14px] font-light text-[#a4a4a4]">{formatDateTime(appointment.starts_at)} - {formatDateTime(appointment.ends_at)}</p>
+      </div>
+
       <div className="mt-7 flex flex-wrap items-center gap-3">
+        {canPay ? (
+          <Button className="h-12 min-w-[128px] rounded-[5px] px-6 py-0 text-[15px]" disabled={busy || !price} onClick={() => onPay(appointment)} type="button">
+            {busy ? <Spinner className="h-5 w-5" /> : "Pay"}
+          </Button>
+        ) : null}
+        {paid ? (
+          <span className="inline-flex min-h-12 items-center rounded-[5px] bg-[#e7f6f0] px-4 text-[14px] font-semibold text-[#0fa269]">
+            Payment made
+          </span>
+        ) : null}
+        {paid && appointment.payment_reference ? (
+          <Link className="inline-flex min-h-12 items-center justify-center rounded-[5px] border border-[#196c88] bg-white px-4 text-[14px] font-semibold text-[#196c88] shadow-sm transition hover:bg-slate-50" href={`/payment/receipt?reference=${encodeURIComponent(appointment.payment_reference)}`}>
+            Receipt
+          </Link>
+        ) : null}
         {showChat ? (
           <Button className="h-12 min-w-[128px] rounded-[5px] px-6 py-0 text-[15px]" disabled={busy} onClick={() => onOpenChat(appointment)} type="button">
             {busy ? <Spinner className="h-5 w-5" /> : <span className="inline-flex items-center gap-2"><MessageSquareText size={17} /> Chat</span>}
@@ -412,6 +457,27 @@ export default function ClientAppointmentsPage() {
     }
   }
 
+  async function payForAppointment(appointment: Appointment) {
+    if (!token) return;
+    setBusyId(appointment.id);
+    try {
+      const data = await payAppointment(token, appointment.id);
+      if (data.payment?.authorization_url) {
+        window.location.assign(data.payment.authorization_url);
+        return;
+      }
+      if (data.appointment) {
+        setAppointments((current) => current.map((item) => item.id === appointment.id ? data.appointment! : item));
+      }
+      showToast({ tone: "success", title: "Payment recorded", body: "Your appointment payment has been confirmed." });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Could not start payment";
+      showToast({ tone: "error", title: "Payment failed", body: message });
+    } finally {
+      setBusyId("");
+    }
+  }
+
   if (loading) {
     return (
       <AppShell>
@@ -460,6 +526,7 @@ export default function ClientAppointmentsPage() {
                 onCancelClick={setCancelTarget}
                 onExpiredHelp={(appointmentId) => setExpiredHelpId((current) => current === appointmentId ? "" : appointmentId)}
                 onOpenChat={openChat}
+                onPay={payForAppointment}
                 onViewProfile={setProfileTarget}
               />
             ))}
