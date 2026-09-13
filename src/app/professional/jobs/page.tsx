@@ -411,6 +411,7 @@ function ApplicationCard({ application, conversation, onAcceptInvite, onDelete, 
           </div>
           <div className="relative">
             <MoreButton aria-label="Manage application" className="h-8 w-8 border-0 shadow-none" onClick={() => setMenuOpen(true)} />
+            {hasUnreadMessages ? <span aria-hidden="true" className="absolute right-0 top-0 h-2.5 w-2.5 rounded-full bg-[#bf1d1d] ring-2 ring-white" /> : null}
             {menuOpen ? (
               <>
                 <button aria-label="Close application menu" className="fixed inset-0 z-[71] cursor-default bg-transparent" onClick={() => setMenuOpen(false)} type="button" />
@@ -956,9 +957,21 @@ function ProfessionalJobsContent() {
   const rejectedApplications = useMemo(() => filteredApplications.filter((application) => isDeclinedApplication(application.status)), [filteredApplications]);
   const activeGroups = useMemo(() => groupConversationsByJob(activeConversations, jobs), [activeConversations, jobs]);
   const completedGroups = useMemo(() => groupConversationsByJob(completedConversations, jobs), [completedConversations, jobs]);
+  const conversationsByApplicationId = useMemo(() => {
+    const entries = conversations
+      .filter((conversation) => Boolean(conversation.application_id))
+      .map((conversation) => [conversation.application_id!, conversation] as const);
+    return new Map(entries);
+  }, [conversations]);
   const matchedPageCount = Math.max(1, Math.ceil(matchedJobs.length / MATCHED_REQUESTS_PAGE_SIZE));
   const visibleMatchedJobs = matchedJobs.slice((matchedPage - 1) * MATCHED_REQUESTS_PAGE_SIZE, matchedPage * MATCHED_REQUESTS_PAGE_SIZE);
   const visibleApplications = showAllApplications ? filteredApplications : filteredApplications.slice(0, APPLICATION_PREVIEW_LIMIT);
+  const filterDots: Record<ProfessionalRequestFilter, boolean> = {
+    service: applications.some((application) => Boolean(conversationsByApplicationId.get(application.id)?.unread_message_count)),
+    active: activeConversations.some((conversation) => Boolean(conversation.unread_message_count)),
+    completed: completedConversations.some((conversation) => Boolean(conversation.unread_message_count)),
+    rejected: rejectedApplications.some((application) => Boolean(conversationsByApplicationId.get(application.id)?.unread_message_count))
+  };
   const filterCounts: Record<ProfessionalRequestFilter, number> = {
     service: matchedJobs.length + filteredApplications.length,
     active: activeGroups.length,
@@ -1190,6 +1203,7 @@ function ProfessionalJobsContent() {
               >
                 <span className={`relative -mb-[3px] inline-flex max-w-full items-center border-b-4 pb-2 ${active ? "border-[#196c88]" : "border-transparent"}`}>
                   {professionalRequestFilterLabels[filter]}({filterCounts[filter]})
+                  {filterDots[filter] && filterCounts[filter] > 0 ? <span aria-hidden="true" className="absolute -right-4 -top-1.5 h-2.5 w-2.5 rounded-full bg-[#bf1d1d]" /> : null}
                 </span>
               </button>
             );
@@ -1234,7 +1248,7 @@ function ProfessionalJobsContent() {
           {filteredApplications.length === 0 ? <EmptyState title="No applications yet" body="Send a proposal to a matched request and it will stay here." /> : null}
           <div className="space-y-7">
             {visibleApplications.map((application) => {
-              const conversation = conversations.find((item) => item.application_id === application.id);
+              const conversation = conversationsByApplicationId.get(application.id);
               return (
                 <ApplicationCard
                   application={application}
@@ -1295,7 +1309,7 @@ function ProfessionalJobsContent() {
         <section className="space-y-7">
           {rejectedApplications.length === 0 ? <EmptyState title="No rejected applications" body="Rejected or withdrawn applications will appear here." /> : null}
           {rejectedApplications.map((application) => {
-            const conversation = conversations.find((item) => item.application_id === application.id);
+            const conversation = conversationsByApplicationId.get(application.id);
             return (
               <ApplicationCard
                 application={application}

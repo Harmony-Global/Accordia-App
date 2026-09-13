@@ -235,6 +235,17 @@ export type JobConversation = {
   };
 };
 
+export type PaymentInitialization = {
+  id: string;
+  payment_type: "job_upfront" | "job_final" | "appointment_full" | string;
+  amount: number;
+  currency: string;
+  provider_reference: string;
+  authorization_url: string;
+  access_code: string;
+  status: string;
+};
+
 export type ChatMessage = {
   id: string;
   conversation_id: string | null;

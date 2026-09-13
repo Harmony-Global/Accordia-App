@@ -1445,7 +1445,11 @@ function ActiveEngagementCard({
               className="h-11 rounded-[5px] px-5 py-0"
               disabled={busyAction === "payment"}
               onClick={() => runAction("payment", async () => {
-                await makeConversationFinalPayment(token!, conversation.id);
+                const data = await makeConversationFinalPayment(token!, conversation.id);
+                if (data.payment?.authorization_url) {
+                  window.location.assign(data.payment.authorization_url);
+                  return;
+                }
                 showToast({ tone: "success", title: "Payment Successfully made", body: "Your deliverables are ready." });
               })}
               type="button"
