@@ -6,7 +6,7 @@ import { Button, CustomSelect, IconButton, ProfileAvatar, Spinner, SurfaceModal 
 import { ScheduleServiceCalendar as SharedScheduleServiceCalendar } from "@/components/schedule-service-calendar";
 import { useToast } from "@/components/toast";
 import { useAuth, useRequireAuth } from "@/hooks/use-auth";
-import { requestAppointmentReschedule, respondAppointmentReschedule } from "@/services/appointment-service";
+import { payAppointment, requestAppointmentReschedule, respondAppointmentReschedule } from "@/services/appointment-service";
 import { acceptConversationQuote, getConversationMessages, getConversationQuoteAttachmentAccess, getConversationQuotes, hireConversationProfessional, markConversationRead, requestConversationQuoteReview, sendConversationMessage, sendConversationQuote, setConversationWorkSchedule, uploadConversationQuoteAttachment } from "@/services/conversation-service";
 import { getInquiryMessages, markInquiryRead, sendInquiryMessage } from "@/services/inquiry-service";
 import type { Appointment, AppointmentRescheduleRequest, ChatMessage, JobConversation, JobQuote, ProfessionalInquiry, Profile } from "@/types";
@@ -70,6 +70,15 @@ function quoteAmount(value?: number | string | null) {
   if (value === null || value === undefined) return null;
   const amount = Number(value);
   return Number.isFinite(amount) ? amount : null;
+}
+
+function appointmentFixedPrice(appointment?: Appointment | null) {
+  if (!appointment?.service) return null;
+  const priceMin = Number(appointment.service.price_min);
+  const priceMax = Number(appointment.service.price_max);
+  if (!Number.isFinite(priceMin) || priceMin <= 0) return null;
+  if (Number.isFinite(priceMax) && priceMax !== priceMin) return null;
+  return priceMin;
 }
 
 function formatMoney(value?: number | string | null, currency = "NGN") {
@@ -645,6 +654,7 @@ export function ChatModal({
     : (currentConversation as ProfessionalInquiry).service?.title ?? "Professional inquiry";
   const jobConversation = kind === "job" ? currentConversation as JobConversation : null;
   const isClient = Boolean(jobConversation && profile?.id === jobConversation.client_id);
+  const isAppointmentClient = Boolean(currentAppointment && profile?.id === currentAppointment.client_id);
   const isRemoteJob = jobConversation?.job?.is_remote === true;
   const isInPersonJob = jobConversation?.job?.is_remote === false;
   const isClosedJobRequest = ["closed", "cancelled"].includes(jobConversation?.job?.status?.toLowerCase() ?? "");
@@ -662,6 +672,8 @@ export function ChatModal({
       .sort((first, second) => new Date(second.created_at).getTime() - new Date(first.created_at).getTime())[0] ?? null;
   }, [currentAppointment?.reschedule_requests]);
   const canRescheduleAppointment = kind === "inquiry" && currentAppointment?.status === "accepted";
+  const canPayAppointment = Boolean(kind === "inquiry" && currentAppointment && isAppointmentClient && !currentAppointment.payment_made_at && !["cancelled", "declined"].includes(currentAppointment.status));
+  const currentAppointmentPrice = appointmentFixedPrice(currentAppointment);
   const canScheduleWork = Boolean(jobConversation && jobConversation.status === "open" && !isClosedJobRequest);
   const canCreateQuote = Boolean(jobConversation && !isClient && jobConversation.status === "open" && !isClosedJobRequest && !hasUpfrontPayment && !acceptedQuote);
   const canRespondToReschedule = Boolean(latestPendingReschedule && profile?.id === latestPendingReschedule.requested_for);
@@ -798,6 +810,28 @@ export function ChatModal({
     });
     setQuoteFiles([]);
     setQuoteFormOpen(true);
+  }
+
+  async function payForAppointment() {
+    if (!token || !currentAppointment) return;
+    setHiring(true);
+
+    try {
+      const data = await payAppointment(token, currentAppointment.id);
+      if (data.payment?.authorization_url) {
+        window.location.assign(data.payment.authorization_url);
+        return;
+      }
+      if (!data.appointment) throw new Error("Payment could not be completed. Please try again.");
+      setCurrentAppointment(data.appointment);
+      onAppointmentUpdated?.(data.appointment);
+      showToast({ tone: "success", title: "Payment recorded", body: "Your appointment payment has been confirmed." });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Could not start appointment payment";
+      showToast({ tone: "error", title: "Payment failed", body: message });
+    } finally {
+      setHiring(false);
+    }
   }
 
   function readQuoteFiles(files: FileList | null, currentFiles: File[]) {
@@ -1455,7 +1489,7 @@ export function ChatModal({
               {sending ? <Spinner className="h-5 w-5 border-2" /> : <Send size={22} />}
             </Button>
           </div>
-          {(jobConversation || canRescheduleAppointment || canScheduleWork) && !latestPendingReschedule && !rescheduleOpen ? (
+          {(jobConversation || canPayAppointment || canRescheduleAppointment || canScheduleWork) && !latestPendingReschedule && !rescheduleOpen ? (
             <div className="mt-3 flex flex-wrap gap-2">
               {canCreateQuote && !activeQuote ? (
                 <button
@@ -1491,6 +1525,17 @@ export function ChatModal({
                 >
                   <CalendarDays size={17} />
                   {canRescheduleAppointment ? "Re-schedule appointment" : jobConversation?.work_starts_at ? "Re-schedule Start Date" : "Schedule Start Date"}
+                </button>
+              ) : null}
+              {canPayAppointment ? (
+                <button
+                  className="inline-flex min-h-10 items-center gap-2 rounded-[5px] bg-[#196c88] px-4 text-sm font-semibold text-white transition hover:bg-[#125a73] disabled:cursor-not-allowed disabled:opacity-60"
+                  disabled={hiring || !currentAppointmentPrice}
+                  onClick={payForAppointment}
+                  type="button"
+                >
+                  {hiring ? <Spinner className="h-4 w-4 border-2" /> : <CheckCircle2 size={17} />}
+                  Pay Appointment{currentAppointmentPrice ? ` ${formatMoney(currentAppointmentPrice, currentAppointment?.service?.currency ?? "NGN")}` : ""}
                 </button>
               ) : null}
             </div>

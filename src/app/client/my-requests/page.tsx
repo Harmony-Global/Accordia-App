@@ -188,7 +188,7 @@ function ProfessionalProfileModal({ application, onClose }: { application: Appli
                 <h4 className="mt-3 font-semibold text-ink">{service.title}</h4>
                 <p className="mt-1 line-clamp-3 text-sm leading-6 text-muted">{service.description}</p>
                 <p className="mt-2 text-sm font-semibold text-brand">
-                  {service.currency} {service.price_min.toLocaleString()} - {service.price_max.toLocaleString()}
+                  {service.currency} {service.price_min.toLocaleString()}
                 </p>
               </article>
             ))}
@@ -1073,6 +1073,24 @@ function finalPaymentAmount(conversation: JobConversation) {
   return rate > 0 ? Math.round(rate / 2) : null;
 }
 
+function successfulPaymentReference(conversation: JobConversation, paymentType: "job_upfront" | "job_final") {
+  const payment = conversation.payments?.find((item) => item.payment_type === paymentType && item.status === "success" && item.provider_reference);
+  return payment?.provider_reference ?? null;
+}
+
+function ReceiptLink({ reference, children }: { reference: string | null; children: string }) {
+  if (!reference) return null;
+
+  return (
+    <a
+      className="inline-flex min-h-9 items-center justify-center rounded-[5px] border border-[#196c88] bg-white px-3 text-[13px] font-semibold text-[#196c88] shadow-sm transition hover:bg-slate-50"
+      href={`/payment/receipt?reference=${encodeURIComponent(reference)}`}
+    >
+      {children}
+    </a>
+  );
+}
+
 function RatingPrompt({
   conversation,
   onReviewed
@@ -1201,6 +1219,8 @@ function ActiveEngagementCard({
   const normalizedWorkStatus = (conversation.work_status ?? "in_progress").toLowerCase();
   const deliverables = conversation.deliverables ?? [];
   const finalPaid = Boolean(conversation.final_payment_made_at);
+  const upfrontReceiptReference = successfulPaymentReference(conversation, "job_upfront");
+  const finalReceiptReference = successfulPaymentReference(conversation, "job_final");
   const canReviewDeliverables = finalPaid;
   const canMakeFinalPayment = hasSubmittedWork(conversation) && !finalPaid;
   const canDecideCompletion = finalPaid && (conversation.work_status === "submitted" || conversation.work_status === "revision_requested");
@@ -1414,18 +1434,21 @@ function ActiveEngagementCard({
         <div>
           <h3 className="text-[22px] font-medium leading-[1.3] text-[#5e5e5e] sm:text-[26px]">Payment</h3>
           <div className="mt-5 space-y-4 text-[15px] text-[#5e5e5e]">
-            <p>
-              Upfront Payment: <span className="ml-3 text-[18px] font-medium text-[#0fa269]">Payment made</span>
-            </p>
-            <p>
-              Remaining Payment:{" "}
-              <span className={`ml-3 text-[18px] font-medium ${finalPaid ? "text-[#0fa269]" : "text-[#f4a422]"}`}>
+            <div className="flex flex-wrap items-center gap-2">
+              <span>Upfront Payment:</span>
+              <span className="text-[18px] font-medium text-[#0fa269]">Payment made</span>
+              <ReceiptLink reference={upfrontReceiptReference}>Upfront receipt</ReceiptLink>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <span>Remaining Payment:</span>
+              <span className={`text-[18px] font-medium ${finalPaid ? "text-[#0fa269]" : "text-[#f4a422]"}`}>
                 {finalPaymentAmount(conversation) ? formatMoney(finalPaymentAmount(conversation), job?.currency ?? "#") : "Pending"}
               </span>
-              <span className={`ml-2 text-[13px] ${finalPaid ? "text-[#0fa269]" : "text-[#f4a422]"}`}>
+              <span className={`text-[13px] ${finalPaid ? "text-[#0fa269]" : "text-[#f4a422]"}`}>
                 {finalPaid ? "Payment made" : "Released after job confirmation"}
               </span>
-            </p>
+              <ReceiptLink reference={finalReceiptReference}>Final receipt</ReceiptLink>
+            </div>
           </div>
         </div>
       </section>

@@ -66,7 +66,7 @@ function formatDateTime(value: string) {
 }
 
 function formatPrice(service: ProfessionalService) {
-  return `${service.currency}${service.price_min.toLocaleString()}-${service.currency}${service.price_max.toLocaleString()}`;
+  return `${service.currency}${service.price_min.toLocaleString()}`;
 }
 
 function ratingLabel(professional: ProfessionalSearchResult) {

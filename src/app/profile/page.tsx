@@ -56,7 +56,7 @@ function ServiceCard({
         </div>
         <p className="mt-2 line-clamp-3 text-sm leading-6 text-muted">{service.description}</p>
         <p className="mt-3 text-sm font-semibold text-ink">
-          {service.currency} {service.price_min.toLocaleString()} - {service.price_max.toLocaleString()}
+          {service.currency} {service.price_min.toLocaleString()}
         </p>
         <div className="mt-4 flex flex-wrap gap-2">
           <Button disabled={busy} onClick={() => onToggle(service)} type="button" variant="secondary">
@@ -294,12 +294,11 @@ export default function ProfilePage() {
       return;
     }
 
-    const priceMin = Number(form.get("price_min"));
-    const priceMax = Number(form.get("price_max"));
-    if (priceMax < priceMin) {
-      const message = "Maximum price must be greater than or equal to minimum price.";
+    const price = Number(form.get("price"));
+    if (!Number.isFinite(price) || price < 0) {
+      const message = "Enter a valid fixed price.";
       setError(message);
-      showToast({ tone: "error", title: "Check price range", body: message });
+      showToast({ tone: "error", title: "Check price", body: message });
       return;
     }
 
@@ -314,8 +313,8 @@ export default function ProfilePage() {
         title: String(form.get("title")),
         description: String(form.get("description")),
         image_url: image.image_url,
-        price_min: priceMin,
-        price_max: priceMax,
+        price_min: price,
+        price_max: price,
         currency: String(form.get("currency") || "NGN"),
         is_active: form.get("is_active") === "on"
       });
@@ -459,7 +458,7 @@ export default function ProfilePage() {
                   <p className="text-sm font-medium text-brand">Portfolio</p>
                   <h2 className="mt-1 text-2xl font-semibold text-ink">Services and products</h2>
                   <p className="mt-2 max-w-2xl text-sm leading-6 text-muted">
-                    Add at least five active offerings so clients can understand what you do and how your pricing starts.
+                    Add at least five active offerings so clients can understand what you do and your fixed service pricing.
                   </p>
                 </div>
                 <div className="rounded-lg border border-line bg-slate-50 px-4 py-3 text-sm font-semibold text-ink">
@@ -483,8 +482,7 @@ export default function ProfilePage() {
                   ))}
                 </SelectField>
                 <TextField defaultValue="NGN" label="Currency" maxLength={3} name="currency" required />
-                <TextField label="Minimum price" min={0} name="price_min" required type="number" />
-                <TextField label="Maximum price" min={0} name="price_max" required type="number" />
+                <TextField label="Price" min={0} name="price" required type="number" />
                 <TextAreaField className="md:col-span-2" label="Description" name="description" placeholder="Describe what this includes..." required rows={4} />
                 <label className="block text-sm font-semibold text-ink md:col-span-2">
                   Image
