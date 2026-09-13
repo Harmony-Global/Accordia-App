@@ -322,6 +322,9 @@ export type Appointment = {
   ends_at: string;
   status: "requested" | "accepted" | "declined" | "cancelled" | "completed" | string;
   note: string | null;
+  payment_made_at?: string | null;
+  payment_made_by?: string | null;
+  payment_reference?: string | null;
   created_at: string;
   updated_at: string;
   client?: Pick<Profile, "id" | "first_name" | "last_name" | "avatar_url" | "phone_verified"> | null;

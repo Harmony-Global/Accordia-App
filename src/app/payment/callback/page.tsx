@@ -16,6 +16,7 @@ function PaymentCallbackContent() {
   const reference = searchParams.get("reference") ?? "";
   const [status, setStatus] = useState<"loading" | "success" | "error">("loading");
   const [message, setMessage] = useState("Verifying your payment...");
+  const [returnPath, setReturnPath] = useState("");
 
   const destination = useMemo(() => {
     if (role === "professional") return "/professional/jobs";
@@ -39,11 +40,10 @@ function PaymentCallbackContent() {
           setMessage("Payment was not completed. Please return to Accordia and try again.");
           return;
         }
+        const target = data.payment.payment_type === "appointment_full" ? "/client/appointments" : destination;
         setStatus("success");
-        setMessage("Payment verified successfully. Your job details have been updated.");
-        window.setTimeout(() => {
-          router.replace(destination);
-        }, 1600);
+        setMessage("Payment verified successfully. Your details have been updated and your receipt is ready.");
+        setReturnPath(target);
       })
       .catch((error) => {
         if (cancelled) return;
@@ -70,12 +70,17 @@ function PaymentCallbackContent() {
           {status === "loading" ? "Verifying payment" : status === "success" ? "Payment confirmed" : "Payment not verified"}
         </h1>
         <p className="mt-3 text-sm leading-6 text-[#757575]">{message}</p>
-        <div className="mt-7">
-          <Button className="rounded-[5px] px-6" type="button" onClick={() => router.replace(destination)}>
+        <div className="mt-7 flex flex-wrap justify-center gap-3">
+          {status === "success" ? (
+            <Link className="inline-flex min-h-11 items-center justify-center rounded-[5px] border border-[#196c88] bg-white px-6 py-3 text-sm font-semibold text-[#196c88] shadow-sm transition hover:bg-slate-50" href={`/payment/receipt?reference=${encodeURIComponent(reference)}`}>
+              View receipt
+            </Link>
+          ) : null}
+          <Button className="rounded-[5px] px-6" type="button" onClick={() => router.replace(returnPath || destination)}>
             Return to dashboard
           </Button>
         </div>
-        <Link className="mt-4 inline-block text-sm font-semibold text-[#196c88]" href={destination}>
+        <Link className="mt-4 inline-block text-sm font-semibold text-[#196c88]" href={returnPath || destination}>
           Go now
         </Link>
       </section>

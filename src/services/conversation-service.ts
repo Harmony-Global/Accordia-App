@@ -128,10 +128,17 @@ export function makeConversationFinalPayment(token: string, conversationId: stri
 }
 
 export function verifyPaystackPayment(token: string, reference: string) {
-  return apiFetch<{ payment: { status: string; provider_reference: string; payment_type: string }; conversation?: JobConversation | null }>(
+  return apiFetch<{ payment: { status: string; provider_reference: string; payment_type: string }; conversation?: JobConversation | null; appointment?: unknown }>(
     `/api/payments/verify?reference=${encodeURIComponent(reference)}`,
     { token, cacheTtlMs: 0 }
   );
+}
+
+export function getPaymentReceipt(token: string, reference: string) {
+  return apiFetch<{ receipt: Record<string, unknown> }>(`/api/payments/receipt?reference=${encodeURIComponent(reference)}`, {
+    token,
+    cacheTtlMs: 0
+  });
 }
 
 export function confirmConversationCompletion(token: string, conversationId: string) {
