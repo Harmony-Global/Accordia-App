@@ -343,6 +343,7 @@ export type Appointment = {
   unread_message_count?: number;
   unread_update_count?: number;
   unread_update_notification_ids?: string[];
+  latest_indicator_at?: string | null;
   created_at: string;
   updated_at: string;
   client?: Pick<Profile, "id" | "first_name" | "last_name" | "avatar_url" | "phone_verified"> | null;

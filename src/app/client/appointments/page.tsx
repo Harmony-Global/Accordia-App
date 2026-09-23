@@ -99,6 +99,39 @@ function appointmentNeedsAction(appointment: Appointment, clientId?: string) {
   return pendingResponse || hireRequired || deadlinePassed;
 }
 
+function validTimestamp(value?: string | null) {
+  if (!value) return 0;
+  const timestamp = new Date(value).getTime();
+  return Number.isFinite(timestamp) ? timestamp : 0;
+}
+
+function actionIndicatorTimestamp(appointment: Appointment) {
+  const timestamps: number[] = [];
+  const pendingRequests = appointment.reschedule_requests?.filter((request) => request.status === "pending" && request.requested_for === appointment.client_id) ?? [];
+  timestamps.push(...pendingRequests.map((request) => validTimestamp(request.updated_at || request.created_at)));
+
+  if (appointment.status === "accepted" && !appointment.hired_at && !appointment.payment_made_at) {
+    timestamps.push(validTimestamp(appointment.updated_at));
+  }
+
+  const deadline = cancellationDeadline(appointment).getTime();
+  if (canRequestCancellation(appointment) && Date.now() > deadline && Date.now() < validTimestamp(appointment.starts_at)) {
+    timestamps.push(deadline);
+  }
+
+  return Math.max(0, ...timestamps);
+}
+
+function appointmentIndicatorTimestamp(appointment: Appointment) {
+  return Math.max(validTimestamp(appointment.latest_indicator_at), actionIndicatorTimestamp(appointment));
+}
+
+function hasAppointmentIndicator(appointment: Appointment) {
+  return appointmentNeedsAction(appointment, appointment.client_id)
+    || (appointment.unread_message_count ?? 0) > 0
+    || (appointment.unread_update_count ?? 0) > 0;
+}
+
 function CategoryPills({ categories }: { categories: Category[] }) {
   const visibleCategories = categories.slice(0, 2);
   const remaining = Math.max(0, categories.length - visibleCategories.length);
@@ -292,23 +325,41 @@ function AppointmentCard({
   const unreadMessages = appointment.unread_message_count ?? 0;
   const hasNewUpdate = (appointment.unread_update_count ?? 0) > 0;
   const hasNewAction = appointmentNeedsAction(appointment, appointment.client_id);
-  const hasIndicators = hasNewAction || unreadMessages > 0 || hasNewUpdate;
+  const indicators: Array<"action" | "message" | "update"> = [];
+  if (hasNewAction) indicators.push("action");
+  if (unreadMessages > 0 && showChat) indicators.push("message");
+  if (hasNewUpdate) indicators.push("update");
+  const indicatorSpacing = indicators.length >= 3
+    ? "pt-[84px] sm:pt-[88px]"
+    : indicators.length === 2
+      ? "pt-[58px] sm:pt-[62px]"
+      : indicators.length === 1
+        ? "pt-8 sm:pt-9"
+        : "";
 
   return (
-    <article className={`relative rounded-[7px] border border-[#b8d1da] bg-white p-5 sm:p-6 lg:p-7 ${hasIndicators ? "pt-8 sm:pt-9" : ""}`}>
-      {hasIndicators ? (
-        <div className="absolute -top-3 left-3 flex max-w-[calc(100%-24px)] flex-wrap items-center gap-2" aria-label="Appointment alerts">
-          {hasNewAction ? <span className="rounded-[4px] border border-red-200 bg-red-50 px-3 py-1 text-xs font-semibold text-red-700">New Action</span> : null}
-          {unreadMessages > 0 && showChat ? (
-            <button className="rounded-[4px] border border-blue-200 bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-800 transition hover:bg-blue-100" onClick={() => onOpenChat(appointment)} type="button">
-              New Message{unreadMessages > 1 ? ` (${unreadMessages})` : ""}
-            </button>
-          ) : null}
-          {hasNewUpdate ? (
-            <button aria-label="Mark appointment updates as seen" className="rounded-[4px] border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-800 transition hover:bg-amber-100" onClick={() => onAcknowledgeUpdate(appointment)} type="button">
-              New Update
-            </button>
-          ) : null}
+    <article className={`relative rounded-[7px] border border-[#b8d1da] bg-white p-5 sm:p-6 lg:p-7 ${indicatorSpacing}`}>
+      {indicators.length > 0 ? (
+        <div className="absolute -top-3 left-3 flex max-w-[calc(100%-24px)] flex-col items-start" aria-label="Appointment alerts">
+          {indicators.map((indicator, index) => (
+            <div
+              className={index > 0 ? "-mt-1" : ""}
+              key={indicator}
+              style={{ marginLeft: indicators.length > 1 ? index * 8 : 0, zIndex: indicators.length - index }}
+            >
+              {indicator === "action" ? <span className="block rounded-[4px] border border-red-200 bg-red-50 px-3 py-1 text-xs font-semibold text-red-700 shadow-sm">New Action</span> : null}
+              {indicator === "message" ? (
+                <button className="block rounded-[4px] border border-blue-200 bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-800 shadow-sm transition hover:bg-blue-100" onClick={() => onOpenChat(appointment)} type="button">
+                  New Message{unreadMessages > 1 ? ` (${unreadMessages})` : ""}
+                </button>
+              ) : null}
+              {indicator === "update" ? (
+                <button aria-label="Mark appointment updates as seen" className="block rounded-[4px] border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-800 shadow-sm transition hover:bg-amber-100" onClick={() => onAcknowledgeUpdate(appointment)} type="button">
+                  New Update
+                </button>
+              ) : null}
+            </div>
+          ))}
         </div>
       ) : null}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
@@ -436,7 +487,21 @@ export default function ClientAppointmentsPage() {
   const handledPaymentReturn = useRef(false);
 
   const sortedAppointments = useMemo(() => {
-    return [...appointments].sort((first, second) => new Date(first.starts_at).getTime() - new Date(second.starts_at).getTime());
+    return [...appointments].sort((first, second) => {
+      const firstHasIndicator = hasAppointmentIndicator(first);
+      const secondHasIndicator = hasAppointmentIndicator(second);
+      if (firstHasIndicator !== secondHasIndicator) return firstHasIndicator ? -1 : 1;
+
+      if (firstHasIndicator && secondHasIndicator) {
+        const indicatorDifference = appointmentIndicatorTimestamp(second) - appointmentIndicatorTimestamp(first);
+        if (indicatorDifference !== 0) return indicatorDifference;
+      }
+
+      const firstRecentAt = Math.max(validTimestamp(first.updated_at), validTimestamp(first.created_at));
+      const secondRecentAt = Math.max(validTimestamp(second.updated_at), validTimestamp(second.created_at));
+      if (firstRecentAt !== secondRecentAt) return secondRecentAt - firstRecentAt;
+      return validTimestamp(first.starts_at) - validTimestamp(second.starts_at);
+    });
   }, [appointments]);
 
   async function loadAppointments(showLoading = true) {
