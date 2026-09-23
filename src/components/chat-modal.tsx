@@ -577,6 +577,7 @@ export function ChatModal({
   conversation,
   appointment,
   kind = "job",
+  initialPaymentSuccess = false,
   onHired,
   onAppointmentUpdated,
   onClose
@@ -584,6 +585,7 @@ export function ChatModal({
   conversation: JobConversation | ProfessionalInquiry;
   appointment?: Appointment | null;
   kind?: "job" | "inquiry";
+  initialPaymentSuccess?: boolean;
   onHired?: (conversation: JobConversation) => void;
   onAppointmentUpdated?: (appointment: Appointment) => void;
   onClose: () => void;
@@ -633,7 +635,11 @@ export function ChatModal({
 
   useEffect(() => {
     setCurrentAppointment(appointment ?? null);
-  }, [appointment]);
+    if (initialPaymentSuccess && appointment?.payment_made_at) {
+      setHireStep("paid");
+      setPaymentNoticeOpen(true);
+    }
+  }, [appointment, initialPaymentSuccess]);
 
   useEffect(() => {
     if (!paymentNoticeOpen) return;
@@ -671,8 +677,9 @@ export function ChatModal({
       .filter((request) => request.status === "pending")
       .sort((first, second) => new Date(second.created_at).getTime() - new Date(first.created_at).getTime())[0] ?? null;
   }, [currentAppointment?.reschedule_requests]);
+  const isAppointmentHired = Boolean(currentAppointment?.hired_at);
   const canRescheduleAppointment = kind === "inquiry" && currentAppointment?.status === "accepted";
-  const canPayAppointment = Boolean(kind === "inquiry" && currentAppointment && isAppointmentClient && !currentAppointment.payment_made_at && !["cancelled", "declined"].includes(currentAppointment.status));
+  const canPayAppointment = Boolean(kind === "inquiry" && currentAppointment && isAppointmentClient && currentAppointment.status === "accepted" && !isAppointmentHired && !currentAppointment.payment_made_at);
   const currentAppointmentPrice = appointmentFixedPrice(currentAppointment);
   const canScheduleWork = Boolean(jobConversation && jobConversation.status === "open" && !isClosedJobRequest);
   const canCreateQuote = Boolean(jobConversation && !isClient && jobConversation.status === "open" && !isClosedJobRequest && !hasUpfrontPayment && !acceptedQuote);
@@ -691,7 +698,7 @@ export function ChatModal({
 
     const data = kind === "job"
       ? await getConversationMessages(token, currentConversation.id)
-      : await getInquiryMessages(token, currentConversation.id);
+      : await getInquiryMessages(token, currentConversation.id, currentAppointment?.id);
     setMessages((current) => {
       if (
         current.length === data.messages.length
@@ -702,8 +709,8 @@ export function ChatModal({
 
       return data.messages;
     });
-    await (kind === "job" ? markConversationRead(token, currentConversation.id) : markInquiryRead(token, currentConversation.id)).catch(() => undefined);
-  }, [currentConversation.id, kind, token]);
+    await (kind === "job" ? markConversationRead(token, currentConversation.id) : markInquiryRead(token, currentConversation.id, currentAppointment?.id)).catch(() => undefined);
+  }, [currentAppointment?.id, currentConversation.id, kind, token]);
 
   const loadQuotes = useCallback(async () => {
     if (!token || !jobConversation) {
@@ -759,9 +766,9 @@ export function ChatModal({
     try {
       const data = kind === "job"
         ? await sendConversationMessage(token, currentConversation.id, body)
-        : await sendInquiryMessage(token, currentConversation.id, body);
+        : await sendInquiryMessage(token, currentConversation.id, body, currentAppointment?.id);
       setMessages((current) => [...current, data.message]);
-      await (kind === "job" ? markConversationRead(token, currentConversation.id) : markInquiryRead(token, currentConversation.id)).catch(() => undefined);
+      await (kind === "job" ? markConversationRead(token, currentConversation.id) : markInquiryRead(token, currentConversation.id, currentAppointment?.id)).catch(() => undefined);
       setDraft("");
       setContactWarning("");
     } catch (err) {
@@ -824,8 +831,10 @@ export function ChatModal({
       }
       if (!data.appointment) throw new Error("Payment could not be completed. Please try again.");
       setCurrentAppointment(data.appointment);
+      setHireStep("paid");
+      setPaymentNoticeOpen(true);
       onAppointmentUpdated?.(data.appointment);
-      showToast({ tone: "success", title: "Payment recorded", body: "Your appointment payment has been confirmed." });
+      showToast({ tone: "success", title: "Professional hired", body: "Your appointment payment has been confirmed." });
     } catch (err) {
       const message = err instanceof Error ? err.message : "Could not start appointment payment";
       showToast({ tone: "error", title: "Payment failed", body: message });
@@ -1278,6 +1287,67 @@ export function ChatModal({
             </div>
           </div>
         ) : null}
+        {hireStep === "confirm" && canPayAppointment ? (
+          <div className="fixed inset-0 z-[105] flex items-center justify-center bg-black/25 p-4">
+            <section className="w-full max-w-xl rounded-[8px] bg-white px-5 py-10 text-center shadow-2xl sm:px-10">
+              <div className="mx-auto grid h-36 w-36 place-items-center rounded-full bg-[#e6f6ef] sm:h-48 sm:w-48">
+                <CheckCircle2 className="text-[#0b8b5a]" size={82} strokeWidth={1.6} />
+              </div>
+              <h2 className="mt-8 text-[22px] font-semibold text-[#5e5e5e]">Confirm hire</h2>
+              <p className="mx-auto mt-3 max-w-md text-sm leading-6 text-[#757575]">
+                You are about to hire {hireName} for this appointment. Continue to make the full service payment.
+              </p>
+              <div className="mt-8 flex flex-wrap justify-center gap-3">
+                <Button className="h-11 rounded-[5px] px-6 py-0" onClick={() => setHireStep("payment")} type="button">Continue to payment</Button>
+                <Button className="h-11 rounded-[5px] border-[#196c88] px-6 py-0 text-[#196c88]" onClick={() => setHireStep("ready")} type="button" variant="secondary">Cancel</Button>
+              </div>
+            </section>
+          </div>
+        ) : null}
+        {canPayAppointment && hireStep === "ready" ? (
+          <div className="m-3 mb-0 rounded-[8px] border-b-[3px] border-[#f4a422] bg-[#fffbe6] p-3 sm:m-4 sm:mb-0 sm:p-4">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex min-w-0 items-start gap-3">
+                <CheckCircle2 className="mt-0.5 shrink-0 text-[#f4a422]" size={28} strokeWidth={1.7} />
+                <div>
+                  <p className="text-[16px] font-semibold text-[#5e5e5e]">Ready to hire {hireName}?</p>
+                  <p className="mt-1 text-sm leading-5 text-[#757575]">Confirm the hire, then make the fixed one-time appointment payment.</p>
+                </div>
+              </div>
+              <Button className="shrink-0 rounded-[5px] px-5" onClick={() => setHireStep("confirm")} type="button">Hire Professional</Button>
+            </div>
+          </div>
+        ) : null}
+        {canPayAppointment && hireStep === "payment" ? (
+          <div className="m-3 mb-0 rounded-[8px] border-b-[3px] border-[#f4a422] bg-[#fffbe6] p-3 sm:m-4 sm:mb-0 sm:p-4">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex min-w-0 items-start gap-3">
+                <CheckCircle2 className="mt-0.5 shrink-0 text-[#f4a422]" size={28} strokeWidth={1.7} />
+                <div>
+                  <p className="text-[16px] font-semibold text-[#5e5e5e]">Make Payment</p>
+                  <p className="mt-1 text-sm leading-5 text-[#757575]">
+                    Pay the fixed appointment price{currentAppointmentPrice ? ` of ${formatMoney(currentAppointmentPrice, currentAppointment?.service?.currency ?? "NGN")}` : ""} through Paystack.
+                  </p>
+                </div>
+              </div>
+              <Button className="shrink-0 rounded-[5px] px-7" disabled={hiring || !currentAppointmentPrice} onClick={payForAppointment} type="button">
+                {hiring ? <span className="inline-flex items-center gap-2"><Spinner className="h-5 w-5 border-[3px]" /> Processing</span> : "Proceed"}
+              </Button>
+            </div>
+          </div>
+        ) : null}
+        {kind === "inquiry" && isAppointmentHired && hireStep === "paid" && paymentNoticeOpen ? (
+          <div className="relative m-3 mb-0 rounded-[8px] border-b-[3px] border-[#0fa269] bg-[#f3fef3] p-3 pr-10 sm:m-4 sm:mb-0 sm:p-4 sm:pr-12">
+            <button aria-label="Dismiss payment notice" className="absolute right-3 top-3 text-black transition hover:text-[#0fa269]" onClick={() => setPaymentNoticeOpen(false)} type="button"><X size={17} /></button>
+            <div className="flex min-w-0 items-start gap-3">
+              <CheckCircle2 className="mt-0.5 shrink-0 text-[#0fa269]" size={24} strokeWidth={1.7} />
+              <div>
+                <p className="text-[15px] font-semibold text-[#5e5e5e] sm:text-[16px]">Appointment payment successfully made</p>
+                <p className="mt-1 text-xs leading-5 text-[#757575] sm:text-sm">{hireName} has been hired for this appointment and your receipt is ready.</p>
+              </div>
+            </div>
+          </div>
+        ) : null}
         {hireStep === "confirm" && isClient && jobConversation && acceptedQuote ? (
           <div className="fixed inset-0 z-[105] flex items-center justify-center bg-black/25 p-4">
             <section className="w-full max-w-xl rounded-[8px] bg-white px-5 py-10 text-center shadow-2xl sm:px-10">
@@ -1489,7 +1559,7 @@ export function ChatModal({
               {sending ? <Spinner className="h-5 w-5 border-2" /> : <Send size={22} />}
             </Button>
           </div>
-          {(jobConversation || canPayAppointment || canRescheduleAppointment || canScheduleWork) && !latestPendingReschedule && !rescheduleOpen ? (
+          {(jobConversation || canRescheduleAppointment || canScheduleWork) && !latestPendingReschedule && !rescheduleOpen ? (
             <div className="mt-3 flex flex-wrap gap-2">
               {canCreateQuote && !activeQuote ? (
                 <button
@@ -1525,17 +1595,6 @@ export function ChatModal({
                 >
                   <CalendarDays size={17} />
                   {canRescheduleAppointment ? "Re-schedule appointment" : jobConversation?.work_starts_at ? "Re-schedule Start Date" : "Schedule Start Date"}
-                </button>
-              ) : null}
-              {canPayAppointment ? (
-                <button
-                  className="inline-flex min-h-10 items-center gap-2 rounded-[5px] bg-[#196c88] px-4 text-sm font-semibold text-white transition hover:bg-[#125a73] disabled:cursor-not-allowed disabled:opacity-60"
-                  disabled={hiring || !currentAppointmentPrice}
-                  onClick={payForAppointment}
-                  type="button"
-                >
-                  {hiring ? <Spinner className="h-4 w-4 border-2" /> : <CheckCircle2 size={17} />}
-                  Pay Appointment{currentAppointmentPrice ? ` ${formatMoney(currentAppointmentPrice, currentAppointment?.service?.currency ?? "NGN")}` : ""}
                 </button>
               ) : null}
             </div>
