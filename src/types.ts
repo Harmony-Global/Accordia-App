@@ -262,6 +262,7 @@ export type ChatMessage = {
   id: string;
   conversation_id: string | null;
   inquiry_id?: string | null;
+  appointment_id?: string | null;
   sender_id: string;
   receiver_id: string;
   job_id: string | null;
@@ -337,6 +338,11 @@ export type Appointment = {
   payment_made_at?: string | null;
   payment_made_by?: string | null;
   payment_reference?: string | null;
+  hired_at?: string | null;
+  hired_by?: string | null;
+  unread_message_count?: number;
+  unread_update_count?: number;
+  unread_update_notification_ids?: string[];
   created_at: string;
   updated_at: string;
   client?: Pick<Profile, "id" | "first_name" | "last_name" | "avatar_url" | "phone_verified"> | null;

@@ -40,7 +40,11 @@ function PaymentCallbackContent() {
           setMessage("Payment was not completed. Please return to Accordia and try again.");
           return;
         }
-        const target = data.payment.payment_type === "appointment_full" ? "/client/appointments" : destination;
+        const target = data.payment.payment_type === "appointment_full" && data.appointment?.id
+          ? `/client/appointments?appointment_id=${encodeURIComponent(data.appointment.id)}&payment=success`
+          : data.payment.payment_type === "appointment_full"
+            ? "/client/appointments"
+            : destination;
         setStatus("success");
         setMessage("Payment verified successfully. Your details have been updated and your receipt is ready.");
         setReturnPath(target);

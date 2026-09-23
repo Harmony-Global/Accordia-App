@@ -2,13 +2,15 @@
 
 import Link from "next/link";
 import { AlertCircle, BriefcaseBusiness, CalendarDays, MapPin, MessageSquareText, Search, X } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { AppShell, EmptyState } from "@/components/app-shell";
 import { ChatModal } from "@/components/chat-modal";
+import { PaymentSummaryModal } from "@/components/payment-summary-modal";
 import { Button, PageLoader, ProfileAvatar, SkeletonBlock, Spinner, SurfaceModal } from "@/components/ui";
 import { useToast } from "@/components/toast";
 import { useProfile } from "@/hooks/use-auth";
-import { getAppointments, openAppointmentChat, payAppointment, updateAppointmentStatus } from "@/services/appointment-service";
+import { getAppointments, openAppointmentChat, updateAppointmentStatus } from "@/services/appointment-service";
+import { markNotificationRead } from "@/services/notification-service";
 import type { Appointment, Category, ProfessionalInquiry, ProfessionalProfile } from "@/types";
 
 function formatDateTime(value: string) {
@@ -85,6 +87,16 @@ function appointmentFixedPrice(appointment: Appointment) {
   if (!Number.isFinite(priceMin) || priceMin <= 0) return null;
   if (Number.isFinite(priceMax) && priceMax !== priceMin) return null;
   return priceMin;
+}
+
+function appointmentNeedsAction(appointment: Appointment, clientId?: string) {
+  const pendingResponse = appointment.reschedule_requests?.some((request) => request.status === "pending" && request.requested_for === clientId) ?? false;
+  const hireRequired = appointment.status === "accepted" && !appointment.hired_at && !appointment.payment_made_at;
+  const now = Date.now();
+  const deadlinePassed = canRequestCancellation(appointment)
+    && now > cancellationDeadline(appointment).getTime()
+    && now < new Date(appointment.starts_at).getTime();
+  return pendingResponse || hireRequired || deadlinePassed;
 }
 
 function CategoryPills({ categories }: { categories: Category[] }) {
@@ -253,31 +265,52 @@ function AppointmentCard({
   busy,
   expiredHelpOpen,
   onCancelClick,
+  onAcknowledgeUpdate,
   onExpiredHelp,
   onOpenChat,
-  onPay,
+  onViewSummary,
   onViewProfile
 }: {
   appointment: Appointment;
   busy: boolean;
   expiredHelpOpen: boolean;
   onCancelClick: (appointment: Appointment) => void;
+  onAcknowledgeUpdate: (appointment: Appointment) => void;
   onExpiredHelp: (appointmentId: string) => void;
   onOpenChat: (appointment: Appointment) => void;
-  onPay: (appointment: Appointment) => void;
+  onViewSummary: (appointment: Appointment) => void;
   onViewProfile: (appointment: Appointment) => void;
 }) {
   const categories = professionalCategories(appointment);
   const canCancel = canRequestCancellation(appointment);
   const canCancelNow = cancellationOpen(appointment);
   const status = statusLabel(appointment.status === "requested" ? "pending" : appointment.status);
-  const showChat = appointment.status === "accepted";
+  const showChat = ["accepted", "completed"].includes(appointment.status);
   const paid = Boolean(appointment.payment_made_at);
   const price = appointmentFixedPrice(appointment);
-  const canPay = !paid && !["cancelled", "declined"].includes(appointment.status);
+  const hired = Boolean(appointment.hired_at);
+  const unreadMessages = appointment.unread_message_count ?? 0;
+  const hasNewUpdate = (appointment.unread_update_count ?? 0) > 0;
+  const hasNewAction = appointmentNeedsAction(appointment, appointment.client_id);
+  const hasIndicators = hasNewAction || unreadMessages > 0 || hasNewUpdate;
 
   return (
-    <article className="relative rounded-[7px] border border-[#b8d1da] bg-white p-5 sm:p-6 lg:p-7">
+    <article className={`relative rounded-[7px] border border-[#b8d1da] bg-white p-5 sm:p-6 lg:p-7 ${hasIndicators ? "pt-8 sm:pt-9" : ""}`}>
+      {hasIndicators ? (
+        <div className="absolute -top-3 left-3 flex max-w-[calc(100%-24px)] flex-wrap items-center gap-2" aria-label="Appointment alerts">
+          {hasNewAction ? <span className="rounded-[4px] border border-red-200 bg-red-50 px-3 py-1 text-xs font-semibold text-red-700">New Action</span> : null}
+          {unreadMessages > 0 && showChat ? (
+            <button className="rounded-[4px] border border-blue-200 bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-800 transition hover:bg-blue-100" onClick={() => onOpenChat(appointment)} type="button">
+              New Message{unreadMessages > 1 ? ` (${unreadMessages})` : ""}
+            </button>
+          ) : null}
+          {hasNewUpdate ? (
+            <button aria-label="Mark appointment updates as seen" className="rounded-[4px] border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-800 transition hover:bg-amber-100" onClick={() => onAcknowledgeUpdate(appointment)} type="button">
+              New Update
+            </button>
+          ) : null}
+        </div>
+      ) : null}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div className="flex min-w-0 items-center gap-3">
           <ProfileAvatar avatarUrl={appointment.professional?.avatar_url} className="h-10 w-10 bg-white ring-1 ring-[#d5e4e9]" iconSize={18} />
@@ -327,29 +360,20 @@ function AppointmentCard({
       </div>
 
       <div className="mt-7 flex flex-wrap items-center gap-3">
-        {canPay ? (
-          <Button className="h-12 min-w-[128px] rounded-[5px] px-6 py-0 text-[15px]" disabled={busy || !price} onClick={() => onPay(appointment)} type="button">
-            {busy ? <Spinner className="h-5 w-5" /> : "Pay"}
-          </Button>
-        ) : null}
-        {paid ? (
-          <span className="inline-flex min-h-12 items-center rounded-[5px] bg-[#e7f6f0] px-4 text-[14px] font-semibold text-[#0fa269]">
-            Payment made
-          </span>
-        ) : null}
-        {paid && appointment.payment_reference ? (
-          <Link className="inline-flex min-h-12 items-center justify-center rounded-[5px] border border-[#196c88] bg-white px-4 text-[14px] font-semibold text-[#196c88] shadow-sm transition hover:bg-slate-50" href={`/payment/receipt?reference=${encodeURIComponent(appointment.payment_reference)}`}>
-            Receipt
-          </Link>
-        ) : null}
         {showChat ? (
-          <Button className="h-12 min-w-[128px] rounded-[5px] px-6 py-0 text-[15px]" disabled={busy} onClick={() => onOpenChat(appointment)} type="button">
+          <Button className="relative h-12 min-w-[128px] rounded-[5px] px-6 py-0 text-[15px]" disabled={busy} onClick={() => onOpenChat(appointment)} type="button">
             {busy ? <Spinner className="h-5 w-5" /> : <span className="inline-flex items-center gap-2"><MessageSquareText size={17} /> Chat</span>}
+            {unreadMessages > 0 ? <span className="absolute -right-2 -top-2 grid h-6 min-w-6 place-items-center rounded-full bg-red-600 px-1 text-[11px] font-bold text-white ring-2 ring-white">{unreadMessages > 9 ? "9+" : unreadMessages}</span> : null}
           </Button>
         ) : null}
         <Button className="h-12 min-w-[128px] rounded-[5px] border-[#196c88] px-6 py-0 text-[15px] font-medium text-[#196c88]" onClick={() => onViewProfile(appointment)} type="button" variant="secondary">
           View Profile
         </Button>
+        {paid && appointment.payment_reference ? (
+          <Button className="h-12 min-w-[128px] rounded-[5px] border-[#196c88] px-5 py-0 text-[15px] font-medium text-[#196c88]" onClick={() => onViewSummary(appointment)} type="button" variant="secondary">
+            View summary
+          </Button>
+        ) : null}
         {canCancel ? (
           <button
             aria-disabled={!canCancelNow}
@@ -386,6 +410,12 @@ function AppointmentCard({
           ) : null}
         </div>
       ) : null}
+      {hired ? (
+        <div className="mt-6 flex items-center justify-between gap-4 border-t border-[#e6eef1] pt-4">
+          <p className="text-[14px] font-semibold text-[#f4a422]">Full payment made</p>
+          <span className="inline-flex min-h-8 items-center rounded-full bg-[#e7f6f0] px-5 text-[13px] font-semibold text-[#196c88]">Hired</span>
+        </div>
+      ) : null}
     </article>
   );
 }
@@ -401,14 +431,17 @@ export default function ClientAppointmentsPage() {
   const [profileTarget, setProfileTarget] = useState<Appointment | null>(null);
   const [chatInquiry, setChatInquiry] = useState<ProfessionalInquiry | null>(null);
   const [chatAppointment, setChatAppointment] = useState<Appointment | null>(null);
+  const [chatPaymentSuccess, setChatPaymentSuccess] = useState(false);
+  const [summaryReference, setSummaryReference] = useState("");
+  const handledPaymentReturn = useRef(false);
 
   const sortedAppointments = useMemo(() => {
     return [...appointments].sort((first, second) => new Date(first.starts_at).getTime() - new Date(second.starts_at).getTime());
   }, [appointments]);
 
-  async function loadAppointments() {
+  async function loadAppointments(showLoading = true) {
     if (!token) return;
-    setPageLoading(true);
+    if (showLoading) setPageLoading(true);
     try {
       const data = await getAppointments(token);
       setAppointments(data.appointments);
@@ -416,14 +449,41 @@ export default function ClientAppointmentsPage() {
       const message = err instanceof Error ? err.message : "Could not load appointments";
       showToast({ tone: "error", title: "Appointments unavailable", body: message });
     } finally {
-      setPageLoading(false);
+      if (showLoading) setPageLoading(false);
     }
   }
 
   useEffect(() => {
     void loadAppointments();
+    const refreshTimer = window.setInterval(() => void loadAppointments(false), 30000);
+    const refreshOnFocus = () => void loadAppointments(false);
+    window.addEventListener("focus", refreshOnFocus);
+    return () => {
+      window.clearInterval(refreshTimer);
+      window.removeEventListener("focus", refreshOnFocus);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
+
+  useEffect(() => {
+    if (pageLoading || handledPaymentReturn.current || typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    const appointmentId = params.get("appointment_id");
+    if (!appointmentId || params.get("payment") !== "success") return;
+    const appointment = appointments.find((item) => item.id === appointmentId);
+    if (!appointment) return;
+    handledPaymentReturn.current = true;
+    window.history.replaceState({}, "", "/client/appointments");
+    void openChat(appointment, true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [appointments, pageLoading]);
+
+  async function acknowledgeAppointmentUpdates(appointment: Appointment) {
+    const notificationIds = appointment.unread_update_notification_ids ?? [];
+    setAppointments((current) => current.map((item) => item.id === appointment.id ? { ...item, unread_update_count: 0, unread_update_notification_ids: [] } : item));
+    if (!token || notificationIds.length === 0) return;
+    await Promise.allSettled(notificationIds.map((notificationId) => markNotificationRead(token, notificationId, true)));
+  }
 
   async function cancelAppointment() {
     if (!token || !cancelTarget) return;
@@ -441,38 +501,19 @@ export default function ClientAppointmentsPage() {
     }
   }
 
-  async function openChat(appointment: Appointment) {
+  async function openChat(appointment: Appointment, paymentSuccess = false) {
     if (!token) return;
     setBusyId(appointment.id);
+    setChatPaymentSuccess(paymentSuccess);
     try {
       const data = await openAppointmentChat(token, appointment.id);
       setChatInquiry(data.inquiry);
       setChatAppointment(appointment);
-      setAppointments((current) => current.map((item) => item.id === appointment.id ? { ...item, inquiry_id: data.inquiry.id } : item));
+      setAppointments((current) => current.map((item) => item.id === appointment.id ? { ...item, inquiry_id: data.inquiry.id, unread_message_count: 0 } : item));
+      void acknowledgeAppointmentUpdates(appointment);
     } catch (err) {
       const message = err instanceof Error ? err.message : "Could not open appointment chat";
       showToast({ tone: "error", title: "Chat unavailable", body: message });
-    } finally {
-      setBusyId("");
-    }
-  }
-
-  async function payForAppointment(appointment: Appointment) {
-    if (!token) return;
-    setBusyId(appointment.id);
-    try {
-      const data = await payAppointment(token, appointment.id);
-      if (data.payment?.authorization_url) {
-        window.location.assign(data.payment.authorization_url);
-        return;
-      }
-      if (data.appointment) {
-        setAppointments((current) => current.map((item) => item.id === appointment.id ? data.appointment! : item));
-      }
-      showToast({ tone: "success", title: "Payment recorded", body: "Your appointment payment has been confirmed." });
-    } catch (err) {
-      const message = err instanceof Error ? err.message : "Could not start payment";
-      showToast({ tone: "error", title: "Payment failed", body: message });
     } finally {
       setBusyId("");
     }
@@ -523,10 +564,15 @@ export default function ClientAppointmentsPage() {
                 busy={busyId === appointment.id}
                 expiredHelpOpen={expiredHelpId === appointment.id}
                 key={appointment.id}
+                onAcknowledgeUpdate={(item) => void acknowledgeAppointmentUpdates(item)}
                 onCancelClick={setCancelTarget}
                 onExpiredHelp={(appointmentId) => setExpiredHelpId((current) => current === appointmentId ? "" : appointmentId)}
                 onOpenChat={openChat}
-                onPay={payForAppointment}
+                onViewSummary={(item) => {
+                  if (!item.payment_reference) return;
+                  setSummaryReference(item.payment_reference);
+                  void acknowledgeAppointmentUpdates(item);
+                }}
                 onViewProfile={setProfileTarget}
               />
             ))}
@@ -546,6 +592,7 @@ export default function ClientAppointmentsPage() {
           <ChatModal
             appointment={chatAppointment}
             conversation={chatInquiry}
+            initialPaymentSuccess={chatPaymentSuccess}
             kind="inquiry"
             onAppointmentUpdated={(updatedAppointment) => {
               setChatAppointment(updatedAppointment);
@@ -554,9 +601,12 @@ export default function ClientAppointmentsPage() {
             onClose={() => {
               setChatInquiry(null);
               setChatAppointment(null);
+              setChatPaymentSuccess(false);
+              void loadAppointments(false);
             }}
           />
         ) : null}
+        {summaryReference ? <PaymentSummaryModal onClose={() => setSummaryReference("")} reference={summaryReference} /> : null}
       </div>
     </AppShell>
   );

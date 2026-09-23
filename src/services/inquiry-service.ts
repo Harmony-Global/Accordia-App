@@ -20,20 +20,24 @@ export function startProfessionalInquiry(
   });
 }
 
-export function getInquiryMessages(token: string, inquiryId: string) {
-  return apiFetch<{ messages: ChatMessage[] }>(`/api/professional-inquiries/${inquiryId}/messages`, { token });
+function appointmentQuery(appointmentId?: string | null) {
+  return appointmentId ? `?appointment_id=${encodeURIComponent(appointmentId)}` : "";
 }
 
-export function sendInquiryMessage(token: string, inquiryId: string, body: string) {
-  return apiFetch<{ message: ChatMessage }>(`/api/professional-inquiries/${inquiryId}/messages`, {
+export function getInquiryMessages(token: string, inquiryId: string, appointmentId?: string | null) {
+  return apiFetch<{ messages: ChatMessage[] }>(`/api/professional-inquiries/${inquiryId}/messages${appointmentQuery(appointmentId)}`, { token });
+}
+
+export function sendInquiryMessage(token: string, inquiryId: string, body: string, appointmentId?: string | null) {
+  return apiFetch<{ message: ChatMessage }>(`/api/professional-inquiries/${inquiryId}/messages${appointmentQuery(appointmentId)}`, {
     token,
     method: "POST",
     body: { body }
   });
 }
 
-export function markInquiryRead(token: string, inquiryId: string) {
-  return apiFetch<{ updated: number }>(`/api/professional-inquiries/${inquiryId}/read`, {
+export function markInquiryRead(token: string, inquiryId: string, appointmentId?: string | null) {
+  return apiFetch<{ updated: number }>(`/api/professional-inquiries/${inquiryId}/read${appointmentQuery(appointmentId)}`, {
     token,
     method: "PATCH",
     body: {}

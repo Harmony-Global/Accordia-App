@@ -1,5 +1,5 @@
 import { apiFetch, apiFormData } from "@/services/http";
-import type { ChatMessage, DeliverableAttachment, JobConversation, JobQuote, JobQuoteAttachment, PaymentInitialization } from "@/types";
+import type { Appointment, ChatMessage, DeliverableAttachment, JobConversation, JobQuote, JobQuoteAttachment, PaymentInitialization } from "@/types";
 
 export function getConversations(token: string, jobId?: string | null) {
   const query = jobId ? `?job_id=${encodeURIComponent(jobId)}` : "";
@@ -128,7 +128,7 @@ export function makeConversationFinalPayment(token: string, conversationId: stri
 }
 
 export function verifyPaystackPayment(token: string, reference: string) {
-  return apiFetch<{ payment: { status: string; provider_reference: string; payment_type: string }; conversation?: JobConversation | null; appointment?: unknown }>(
+  return apiFetch<{ payment: { status: string; provider_reference: string; payment_type: string }; conversation?: JobConversation | null; appointment?: Appointment | null }>(
     `/api/payments/verify?reference=${encodeURIComponent(reference)}`,
     { token, cacheTtlMs: 0 }
   );
