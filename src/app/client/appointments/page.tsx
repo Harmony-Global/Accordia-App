@@ -330,9 +330,9 @@ function AppointmentCard({
   if (unreadMessages > 0 && showChat) indicators.push("message");
   if (hasNewUpdate) indicators.push("update");
   const indicatorSpacing = indicators.length >= 3
-    ? "pt-[84px] sm:pt-[88px]"
+    ? "pt-[68px] sm:pt-[72px]"
     : indicators.length === 2
-      ? "pt-[58px] sm:pt-[62px]"
+      ? "pt-[48px] sm:pt-[52px]"
       : indicators.length === 1
         ? "pt-8 sm:pt-9"
         : "";
@@ -343,9 +343,9 @@ function AppointmentCard({
         <div className="absolute -top-3 left-3 flex max-w-[calc(100%-24px)] flex-col items-start" aria-label="Appointment alerts">
           {indicators.map((indicator, index) => (
             <div
-              className={index > 0 ? "-mt-1" : ""}
+              className={index > 0 ? "-mt-2" : ""}
               key={indicator}
-              style={{ marginLeft: indicators.length > 1 ? index * 8 : 0, zIndex: indicators.length - index }}
+              style={{ marginLeft: indicators.length > 1 ? index * 8 : 0, zIndex: index + 1 }}
             >
               {indicator === "action" ? <span className="block rounded-[4px] border border-red-200 bg-red-50 px-3 py-1 text-xs font-semibold text-red-700 shadow-sm">New Action</span> : null}
               {indicator === "message" ? (
