@@ -6,7 +6,7 @@ import { Button, CustomSelect, IconButton, ProfileAvatar, Spinner, SurfaceModal 
 import { ScheduleServiceCalendar as SharedScheduleServiceCalendar } from "@/components/schedule-service-calendar";
 import { useToast } from "@/components/toast";
 import { useAuth, useRequireAuth } from "@/hooks/use-auth";
-import { payAppointment, requestAppointmentReschedule, respondAppointmentReschedule } from "@/services/appointment-service";
+import { confirmAppointmentHire, payAppointment, requestAppointmentReschedule, respondAppointmentReschedule } from "@/services/appointment-service";
 import { acceptConversationQuote, getConversationMessages, getConversationQuoteAttachmentAccess, getConversationQuotes, hireConversationProfessional, markConversationRead, requestConversationQuoteReview, sendConversationMessage, sendConversationQuote, setConversationWorkSchedule, uploadConversationQuoteAttachment } from "@/services/conversation-service";
 import { getInquiryMessages, markInquiryRead, sendInquiryMessage } from "@/services/inquiry-service";
 import type { Appointment, AppointmentRescheduleRequest, ChatMessage, JobConversation, JobQuote, ProfessionalInquiry, Profile } from "@/types";
@@ -73,12 +73,8 @@ function quoteAmount(value?: number | string | null) {
 }
 
 function appointmentFixedPrice(appointment?: Appointment | null) {
-  if (!appointment?.service) return null;
-  const priceMin = Number(appointment.service.price_min);
-  const priceMax = Number(appointment.service.price_max);
-  if (!Number.isFinite(priceMin) || priceMin <= 0) return null;
-  if (Number.isFinite(priceMax) && priceMax !== priceMin) return null;
-  return priceMin;
+  const amount = Number(appointment?.price_amount);
+  return Number.isFinite(amount) && amount > 0 ? amount : null;
 }
 
 function formatMoney(value?: number | string | null, currency = "NGN") {
@@ -679,7 +675,7 @@ export function ChatModal({
   }, [currentAppointment?.reschedule_requests]);
   const isAppointmentHired = Boolean(currentAppointment?.hired_at);
   const canRescheduleAppointment = kind === "inquiry" && currentAppointment?.status === "accepted";
-  const canPayAppointment = Boolean(kind === "inquiry" && currentAppointment && isAppointmentClient && currentAppointment.status === "accepted" && !isAppointmentHired && !currentAppointment.payment_made_at);
+  const canPayAppointment = Boolean(kind === "inquiry" && currentAppointment && isAppointmentClient && currentAppointment.status === "accepted" && !currentAppointment.payment_made_at && appointmentFixedPrice(currentAppointment));
   const currentAppointmentPrice = appointmentFixedPrice(currentAppointment);
   const canScheduleWork = Boolean(jobConversation && jobConversation.status === "open" && !isClosedJobRequest);
   const canCreateQuote = Boolean(jobConversation && !isClient && jobConversation.status === "open" && !isClosedJobRequest && !hasUpfrontPayment && !acceptedQuote);
@@ -838,6 +834,21 @@ export function ChatModal({
     } catch (err) {
       const message = err instanceof Error ? err.message : "Could not start appointment payment";
       showToast({ tone: "error", title: "Payment failed", body: message });
+    } finally {
+      setHiring(false);
+    }
+  }
+
+  async function hireForAppointment() {
+    if (!token || !currentAppointment) return;
+    setHiring(true);
+    try {
+      const data = await confirmAppointmentHire(token, currentAppointment.id);
+      setCurrentAppointment(data.appointment);
+      onAppointmentUpdated?.(data.appointment);
+      setHireStep("payment");
+    } catch (err) {
+      showToast({ tone: "error", title: "Could not confirm hire", body: err instanceof Error ? err.message : "Please try again." });
     } finally {
       setHiring(false);
     }
@@ -1287,7 +1298,7 @@ export function ChatModal({
             </div>
           </div>
         ) : null}
-        {hireStep === "confirm" && canPayAppointment ? (
+        {hireStep === "confirm" && canPayAppointment && !isAppointmentHired ? (
           <div className="fixed inset-0 z-[105] flex items-center justify-center bg-black/25 p-4">
             <section className="w-full max-w-xl rounded-[8px] bg-white px-5 py-10 text-center shadow-2xl sm:px-10">
               <div className="mx-auto grid h-36 w-36 place-items-center rounded-full bg-[#e6f6ef] sm:h-48 sm:w-48">
@@ -1298,13 +1309,13 @@ export function ChatModal({
                 You are about to hire {hireName} for this appointment. Continue to make the full service payment.
               </p>
               <div className="mt-8 flex flex-wrap justify-center gap-3">
-                <Button className="h-11 rounded-[5px] px-6 py-0" onClick={() => setHireStep("payment")} type="button">Continue to payment</Button>
+                <Button className="h-11 rounded-[5px] px-6 py-0" disabled={hiring} onClick={hireForAppointment} type="button">{hiring ? "Confirming..." : "Continue to payment"}</Button>
                 <Button className="h-11 rounded-[5px] border-[#196c88] px-6 py-0 text-[#196c88]" onClick={() => setHireStep("ready")} type="button" variant="secondary">Cancel</Button>
               </div>
             </section>
           </div>
         ) : null}
-        {canPayAppointment && hireStep === "ready" ? (
+        {canPayAppointment && !isAppointmentHired && hireStep === "ready" ? (
           <div className="m-3 mb-0 rounded-[8px] border-b-[3px] border-[#f4a422] bg-[#fffbe6] p-3 sm:m-4 sm:mb-0 sm:p-4">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div className="flex min-w-0 items-start gap-3">
@@ -1318,7 +1329,7 @@ export function ChatModal({
             </div>
           </div>
         ) : null}
-        {canPayAppointment && hireStep === "payment" ? (
+        {canPayAppointment && isAppointmentHired ? (
           <div className="m-3 mb-0 rounded-[8px] border-b-[3px] border-[#f4a422] bg-[#fffbe6] p-3 sm:m-4 sm:mb-0 sm:p-4">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div className="flex min-w-0 items-start gap-3">
@@ -1326,7 +1337,7 @@ export function ChatModal({
                 <div>
                   <p className="text-[16px] font-semibold text-[#5e5e5e]">Make Payment</p>
                   <p className="mt-1 text-sm leading-5 text-[#757575]">
-                    Pay the fixed appointment price{currentAppointmentPrice ? ` of ${formatMoney(currentAppointmentPrice, currentAppointment?.service?.currency ?? "NGN")}` : ""} through Paystack.
+                    Pay the fixed appointment price{currentAppointmentPrice ? ` of ${formatMoney(currentAppointmentPrice, currentAppointment?.price_currency ?? "NGN")}` : ""} through Paystack.
                   </p>
                 </div>
               </div>
@@ -1335,6 +1346,9 @@ export function ChatModal({
               </Button>
             </div>
           </div>
+        ) : null}
+        {kind === "inquiry" && isAppointmentClient && currentAppointment?.status === "accepted" && !currentAppointment.payment_made_at && !currentAppointmentPrice ? (
+          <div className="m-3 rounded-[6px] border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900 sm:m-4">This older appointment has no agreed price. Please <a className="font-semibold underline" href="mailto:support@accordia.app">contact support</a> before hiring or paying.</div>
         ) : null}
         {kind === "inquiry" && isAppointmentHired && hireStep === "paid" && paymentNoticeOpen ? (
           <div className="relative m-3 mb-0 rounded-[8px] border-b-[3px] border-[#0fa269] bg-[#f3fef3] p-3 pr-10 sm:m-4 sm:mb-0 sm:p-4 sm:pr-12">

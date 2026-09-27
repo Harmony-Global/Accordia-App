@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { AlertCircle, BriefcaseBusiness, CalendarDays, MapPin, MessageSquareText, Search, X } from "lucide-react";
+import { AlertCircle, BriefcaseBusiness, CalendarDays, MapPin, MessageSquareText, Search, Star, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AppShell, EmptyState } from "@/components/app-shell";
 import { ChatModal } from "@/components/chat-modal";
@@ -9,7 +9,7 @@ import { PaymentSummaryModal } from "@/components/payment-summary-modal";
 import { Button, PageLoader, ProfileAvatar, SkeletonBlock, Spinner, SurfaceModal } from "@/components/ui";
 import { useToast } from "@/components/toast";
 import { useProfile } from "@/hooks/use-auth";
-import { getAppointments, openAppointmentChat, updateAppointmentStatus } from "@/services/appointment-service";
+import { getAppointments, openAppointmentChat, reviewAppointment, updateAppointmentStatus } from "@/services/appointment-service";
 import { markNotificationRead } from "@/services/notification-service";
 import type { Appointment, Category, ProfessionalInquiry, ProfessionalProfile } from "@/types";
 
@@ -72,26 +72,24 @@ function appointmentTone(status: string): "teal" | "green" | "amber" | "gray" | 
 
 function workLabel(appointment: Appointment) {
   if (appointment.status === "completed") return "Completed";
+  if (appointment.payment_made_at) return "In Progress";
   return "Not Started";
 }
 
 function workTone(appointment: Appointment) {
   if (appointment.status === "completed") return "text-[#0fa269]";
+  if (appointment.payment_made_at) return "text-[#0fa269]";
   return "text-[#f4a422]";
 }
 
 function appointmentFixedPrice(appointment: Appointment) {
-  if (!appointment.service) return null;
-  const priceMin = Number(appointment.service.price_min);
-  const priceMax = Number(appointment.service.price_max);
-  if (!Number.isFinite(priceMin) || priceMin <= 0) return null;
-  if (Number.isFinite(priceMax) && priceMax !== priceMin) return null;
-  return priceMin;
+  const amount = Number(appointment.price_amount);
+  return Number.isFinite(amount) && amount > 0 ? amount : null;
 }
 
 function appointmentNeedsAction(appointment: Appointment, clientId?: string) {
   const pendingResponse = appointment.reschedule_requests?.some((request) => request.status === "pending" && request.requested_for === clientId) ?? false;
-  const hireRequired = appointment.status === "accepted" && !appointment.hired_at && !appointment.payment_made_at;
+  const hireRequired = appointment.status === "accepted" && Boolean(appointment.price_amount) && !appointment.hired_at && !appointment.payment_made_at;
   const now = Date.now();
   const deadlinePassed = canRequestCancellation(appointment)
     && now > cancellationDeadline(appointment).getTime()
@@ -110,7 +108,7 @@ function actionIndicatorTimestamp(appointment: Appointment) {
   const pendingRequests = appointment.reschedule_requests?.filter((request) => request.status === "pending" && request.requested_for === appointment.client_id) ?? [];
   timestamps.push(...pendingRequests.map((request) => validTimestamp(request.updated_at || request.created_at)));
 
-  if (appointment.status === "accepted" && !appointment.hired_at && !appointment.payment_made_at) {
+  if (appointment.status === "accepted" && appointment.price_amount && !appointment.hired_at && !appointment.payment_made_at) {
     timestamps.push(validTimestamp(appointment.updated_at));
   }
 
@@ -122,14 +120,19 @@ function actionIndicatorTimestamp(appointment: Appointment) {
   return Math.max(0, ...timestamps);
 }
 
-function appointmentIndicatorTimestamp(appointment: Appointment) {
-  return Math.max(validTimestamp(appointment.latest_indicator_at), actionIndicatorTimestamp(appointment));
-}
-
-function hasAppointmentIndicator(appointment: Appointment) {
-  return appointmentNeedsAction(appointment, appointment.client_id)
-    || (appointment.unread_message_count ?? 0) > 0
-    || (appointment.unread_update_count ?? 0) > 0;
+function latestAppointmentIndicator(appointment: Appointment) {
+  const indicators: Array<{ kind: "action" | "message" | "update"; timestamp: number }> = [];
+  if (appointmentNeedsAction(appointment, appointment.client_id)) {
+    indicators.push({ kind: "action", timestamp: actionIndicatorTimestamp(appointment) });
+  }
+  if ((appointment.unread_message_count ?? 0) > 0 && ["accepted", "completed"].includes(appointment.status)) {
+    indicators.push({ kind: "message", timestamp: validTimestamp(appointment.latest_message_at) });
+  }
+  if ((appointment.unread_update_count ?? 0) > 0) {
+    indicators.push({ kind: "update", timestamp: validTimestamp(appointment.latest_update_at) });
+  }
+  indicators.sort((first, second) => second.timestamp - first.timestamp);
+  return indicators[0] ?? null;
 }
 
 function CategoryPills({ categories }: { categories: Category[] }) {
@@ -302,6 +305,7 @@ function AppointmentCard({
   onExpiredHelp,
   onOpenChat,
   onViewSummary,
+  onReview,
   onViewProfile
 }: {
   appointment: Appointment;
@@ -312,6 +316,7 @@ function AppointmentCard({
   onExpiredHelp: (appointmentId: string) => void;
   onOpenChat: (appointment: Appointment) => void;
   onViewSummary: (appointment: Appointment) => void;
+  onReview: (appointment: Appointment) => void;
   onViewProfile: (appointment: Appointment) => void;
 }) {
   const categories = professionalCategories(appointment);
@@ -321,45 +326,25 @@ function AppointmentCard({
   const showChat = ["accepted", "completed"].includes(appointment.status);
   const paid = Boolean(appointment.payment_made_at);
   const price = appointmentFixedPrice(appointment);
-  const hired = Boolean(appointment.hired_at);
+  const hired = Boolean(appointment.hired_at) && ["accepted", "completed"].includes(appointment.status);
   const unreadMessages = appointment.unread_message_count ?? 0;
-  const hasNewUpdate = (appointment.unread_update_count ?? 0) > 0;
-  const hasNewAction = appointmentNeedsAction(appointment, appointment.client_id);
-  const indicators: Array<"action" | "message" | "update"> = [];
-  if (hasNewAction) indicators.push("action");
-  if (unreadMessages > 0 && showChat) indicators.push("message");
-  if (hasNewUpdate) indicators.push("update");
-  const indicatorSpacing = indicators.length >= 3
-    ? "pt-[68px] sm:pt-[72px]"
-    : indicators.length === 2
-      ? "pt-[48px] sm:pt-[52px]"
-      : indicators.length === 1
-        ? "pt-8 sm:pt-9"
-        : "";
+  const indicator = latestAppointmentIndicator(appointment)?.kind;
 
   return (
-    <article className={`relative rounded-[7px] border border-[#b8d1da] bg-white p-5 sm:p-6 lg:p-7 ${indicatorSpacing}`}>
-      {indicators.length > 0 ? (
-        <div className="absolute -top-3 left-3 flex max-w-[calc(100%-24px)] flex-col items-start" aria-label="Appointment alerts">
-          {indicators.map((indicator, index) => (
-            <div
-              className={index > 0 ? "-mt-2" : ""}
-              key={indicator}
-              style={{ marginLeft: indicators.length > 1 ? index * 8 : 0, zIndex: index + 1 }}
-            >
-              {indicator === "action" ? <span className="block rounded-[4px] border border-red-200 bg-red-50 px-3 py-1 text-xs font-semibold text-red-700 shadow-sm">New Action</span> : null}
-              {indicator === "message" ? (
-                <button className="block rounded-[4px] border border-blue-200 bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-800 shadow-sm transition hover:bg-blue-100" onClick={() => onOpenChat(appointment)} type="button">
-                  New Message{unreadMessages > 1 ? ` (${unreadMessages})` : ""}
-                </button>
-              ) : null}
-              {indicator === "update" ? (
-                <button aria-label="Mark appointment updates as seen" className="block rounded-[4px] border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-800 shadow-sm transition hover:bg-amber-100" onClick={() => onAcknowledgeUpdate(appointment)} type="button">
-                  New Update
-                </button>
-              ) : null}
-            </div>
-          ))}
+    <article className={`relative rounded-[7px] border border-[#b8d1da] bg-white p-5 sm:p-6 lg:p-7 ${indicator ? "pt-8 sm:pt-9" : ""}`}>
+      {indicator ? (
+        <div className="absolute -top-3 left-3 max-w-[calc(100%-24px)]" aria-label="Appointment alert">
+          {indicator === "action" ? <span className="block rounded-[4px] border border-red-200 bg-red-50 px-3 py-1 text-xs font-semibold text-red-700">New Action</span> : null}
+          {indicator === "message" ? (
+            <button className="block rounded-[4px] border border-blue-200 bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-800 transition hover:bg-blue-100" onClick={() => onOpenChat(appointment)} type="button">
+              New Message{unreadMessages > 1 ? ` (${unreadMessages})` : ""}
+            </button>
+          ) : null}
+          {indicator === "update" ? (
+            <button aria-label="Mark appointment updates as seen" className="block rounded-[4px] border border-[#e9b85c] bg-[#ffe6aa] px-3 py-1 text-xs font-semibold text-[#754600] transition hover:bg-[#ffda8a]" onClick={() => onAcknowledgeUpdate(appointment)} type="button">
+              New Update
+            </button>
+          ) : null}
         </div>
       ) : null}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
@@ -399,7 +384,7 @@ function AppointmentCard({
         <div>
           <p className="text-[14px] font-semibold text-[#5e5e5e]">Payment</p>
           <p className="mt-2 text-[14px] font-light text-[#a4a4a4]">
-            {price ? formatMoney(price, appointment.service?.currency ?? "NGN") : "Fixed service price required"}
+            {price ? formatMoney(price, appointment.price_currency ?? "NGN") : <a className="font-semibold text-[#196c88] underline" href="mailto:support@accordia.app">Price needs support confirmation</a>}
             {paid ? <span className="ml-2 font-semibold text-[#0fa269]">Paid</span> : null}
           </p>
         </div>
@@ -424,6 +409,9 @@ function AppointmentCard({
           <Button className="h-12 min-w-[128px] rounded-[5px] border-[#196c88] px-5 py-0 text-[15px] font-medium text-[#196c88]" onClick={() => onViewSummary(appointment)} type="button" variant="secondary">
             View summary
           </Button>
+        ) : null}
+        {appointment.status === "completed" && !(Array.isArray(appointment.review) ? appointment.review[0] : appointment.review) ? (
+          <Button className="h-12 rounded-[5px] border-[#196c88] px-5 text-[#196c88]" onClick={() => onReview(appointment)} type="button" variant="secondary"><Star size={16} /> Rate service</Button>
         ) : null}
         {canCancel ? (
           <button
@@ -463,7 +451,7 @@ function AppointmentCard({
       ) : null}
       {hired ? (
         <div className="mt-6 flex items-center justify-between gap-4 border-t border-[#e6eef1] pt-4">
-          <p className="text-[14px] font-semibold text-[#f4a422]">Full payment made</p>
+          <p className="text-[14px] font-semibold text-[#f4a422]">{paid ? "Full payment made" : "Awaiting payment"}</p>
           <span className="inline-flex min-h-8 items-center rounded-full bg-[#e7f6f0] px-5 text-[13px] font-semibold text-[#196c88]">Hired</span>
         </div>
       ) : null}
@@ -484,16 +472,22 @@ export default function ClientAppointmentsPage() {
   const [chatAppointment, setChatAppointment] = useState<Appointment | null>(null);
   const [chatPaymentSuccess, setChatPaymentSuccess] = useState(false);
   const [summaryReference, setSummaryReference] = useState("");
+  const [reviewTarget, setReviewTarget] = useState<Appointment | null>(null);
+  const [reviewRating, setReviewRating] = useState(0);
+  const [reviewText, setReviewText] = useState("");
+  const [reviewBusy, setReviewBusy] = useState(false);
   const handledPaymentReturn = useRef(false);
 
   const sortedAppointments = useMemo(() => {
     return [...appointments].sort((first, second) => {
-      const firstHasIndicator = hasAppointmentIndicator(first);
-      const secondHasIndicator = hasAppointmentIndicator(second);
+      const firstIndicator = latestAppointmentIndicator(first);
+      const secondIndicator = latestAppointmentIndicator(second);
+      const firstHasIndicator = Boolean(firstIndicator);
+      const secondHasIndicator = Boolean(secondIndicator);
       if (firstHasIndicator !== secondHasIndicator) return firstHasIndicator ? -1 : 1;
 
-      if (firstHasIndicator && secondHasIndicator) {
-        const indicatorDifference = appointmentIndicatorTimestamp(second) - appointmentIndicatorTimestamp(first);
+      if (firstIndicator && secondIndicator) {
+        const indicatorDifference = secondIndicator.timestamp - firstIndicator.timestamp;
         if (indicatorDifference !== 0) return indicatorDifference;
       }
 
@@ -545,9 +539,24 @@ export default function ClientAppointmentsPage() {
 
   async function acknowledgeAppointmentUpdates(appointment: Appointment) {
     const notificationIds = appointment.unread_update_notification_ids ?? [];
-    setAppointments((current) => current.map((item) => item.id === appointment.id ? { ...item, unread_update_count: 0, unread_update_notification_ids: [] } : item));
+    setAppointments((current) => current.map((item) => item.id === appointment.id ? { ...item, unread_update_count: 0, unread_update_notification_ids: [], latest_update_at: null } : item));
     if (!token || notificationIds.length === 0) return;
     await Promise.allSettled(notificationIds.map((notificationId) => markNotificationRead(token, notificationId, true)));
+  }
+
+  async function submitReview(skipped: boolean) {
+    if (!token || !reviewTarget || (!skipped && reviewRating < 1)) return;
+    setReviewBusy(true);
+    try {
+      await reviewAppointment(token, reviewTarget.id, { skipped, rating: skipped ? undefined : reviewRating, review_text: reviewText || undefined });
+      setReviewTarget(null);
+      setReviewRating(0);
+      setReviewText("");
+      await loadAppointments(false);
+      showToast({ tone: "success", title: skipped ? "Review skipped" : "Review submitted" });
+    } catch (error) {
+      showToast({ tone: "error", title: "Review not saved", body: error instanceof Error ? error.message : "Please try again." });
+    } finally { setReviewBusy(false); }
   }
 
   async function cancelAppointment() {
@@ -574,8 +583,7 @@ export default function ClientAppointmentsPage() {
       const data = await openAppointmentChat(token, appointment.id);
       setChatInquiry(data.inquiry);
       setChatAppointment(appointment);
-      setAppointments((current) => current.map((item) => item.id === appointment.id ? { ...item, inquiry_id: data.inquiry.id, unread_message_count: 0 } : item));
-      void acknowledgeAppointmentUpdates(appointment);
+      setAppointments((current) => current.map((item) => item.id === appointment.id ? { ...item, inquiry_id: data.inquiry.id, unread_message_count: 0, latest_message_at: null } : item));
     } catch (err) {
       const message = err instanceof Error ? err.message : "Could not open appointment chat";
       showToast({ tone: "error", title: "Chat unavailable", body: message });
@@ -638,6 +646,7 @@ export default function ClientAppointmentsPage() {
                   setSummaryReference(item.payment_reference);
                   void acknowledgeAppointmentUpdates(item);
                 }}
+                onReview={setReviewTarget}
                 onViewProfile={setProfileTarget}
               />
             ))}
@@ -661,7 +670,7 @@ export default function ClientAppointmentsPage() {
             kind="inquiry"
             onAppointmentUpdated={(updatedAppointment) => {
               setChatAppointment(updatedAppointment);
-              setAppointments((current) => current.map((item) => item.id === updatedAppointment.id ? updatedAppointment : item));
+              setAppointments((current) => current.map((item) => item.id === updatedAppointment.id ? { ...item, ...updatedAppointment } : item));
             }}
             onClose={() => {
               setChatInquiry(null);
@@ -672,6 +681,7 @@ export default function ClientAppointmentsPage() {
           />
         ) : null}
         {summaryReference ? <PaymentSummaryModal onClose={() => setSummaryReference("")} reference={summaryReference} /> : null}
+        {reviewTarget ? <SurfaceModal onClose={() => setReviewTarget(null)} panelClassName="p-5 sm:p-7" size="sm"><div className="flex items-center justify-between gap-3"><h2 className="text-xl font-semibold text-[#196c88]">Rate your appointment</h2><button aria-label="Close" onClick={() => setReviewTarget(null)} type="button"><X size={20} /></button></div><p className="mt-3 text-sm text-[#757575]">{personName(reviewTarget.professional)} · {reviewTarget.service?.title ?? "Service"}</p><div aria-label="Rating" className="mt-6 flex gap-2" role="group">{[1, 2, 3, 4, 5].map((value) => <button aria-label={`${value} star${value === 1 ? "" : "s"}`} aria-pressed={reviewRating === value} className="rounded p-1 text-amber-500 focus:outline-none focus:ring-2 focus:ring-[#196c88]" key={value} onClick={() => setReviewRating(value)} type="button"><Star fill={value <= reviewRating ? "currentColor" : "none"} size={28} /></button>)}</div><textarea aria-label="Review (optional)" className="mt-5 min-h-28 w-full rounded border border-[#b8d1da] p-3 text-sm" maxLength={2000} onChange={(event) => setReviewText(event.target.value)} placeholder="Share your experience (optional)" value={reviewText} /><div className="mt-5 flex flex-wrap gap-3"><Button disabled={reviewBusy || reviewRating < 1} onClick={() => void submitReview(false)} type="button">Submit review</Button><Button disabled={reviewBusy} onClick={() => void submitReview(true)} type="button" variant="secondary">Skip for now</Button></div></SurfaceModal> : null}
       </div>
     </AppShell>
   );
