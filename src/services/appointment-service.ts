@@ -11,7 +11,8 @@ export function getAvailability(token: string, professionalId?: string) {
 export function createAvailability(
   token: string,
   payload: {
-    service_id?: string | null;
+    service_id: string;
+    capacity: number;
     starts_at: string;
     ends_at: string;
     note?: string | null;
@@ -29,6 +30,25 @@ export function deleteAvailability(token: string, availabilityId: string) {
     token,
     method: "DELETE"
   });
+}
+
+export function updateAvailability(token: string, availabilityId: string, payload: {
+  action: "edit" | "pause" | "resume";
+  capacity?: number;
+  note?: string | null;
+  starts_at?: string;
+  ends_at?: string;
+  service_id?: string;
+}) {
+  return apiFetch<{ availability: AppointmentAvailability }>(`/api/appointments/availability/${availabilityId}`, { token, method: "PATCH", body: payload });
+}
+
+export function confirmAppointmentHire(token: string, appointmentId: string) {
+  return apiFetch<{ appointment: Appointment }>(`/api/appointments/${appointmentId}/hire`, { token, method: "POST", body: {} });
+}
+
+export function reviewAppointment(token: string, appointmentId: string, payload: { rating?: number; review_text?: string; skipped?: boolean }) {
+  return apiFetch<{ review: Appointment["review"] }>(`/api/appointments/${appointmentId}/review`, { token, method: "POST", body: payload });
 }
 
 export function getAppointments(token: string) {

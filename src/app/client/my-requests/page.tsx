@@ -5,6 +5,7 @@ import { Suspense, useCallback, useEffect, useState } from "react";
 import { BriefcaseBusiness, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, Clock3, Download, Eye, File, FileImage, FileSpreadsheet, FileText, MapPin, MessagesSquare, RefreshCw, ShieldCheck, Star, X, type LucideIcon } from "lucide-react";
 import { AppShell, EmptyState } from "@/components/app-shell";
 import { ChatModal } from "@/components/chat-modal";
+import { PaymentSummaryModal } from "@/components/payment-summary-modal";
 import { ApplicationStatusPill, Button, IconButton, MoreButton, PageLoader, ProfileAvatar, Spinner, StatusPill, SurfaceModal, TextAreaField } from "@/components/ui";
 import { useToast } from "@/components/toast";
 import { useRequireAuth } from "@/hooks/use-auth";
@@ -1078,16 +1079,17 @@ function successfulPaymentReference(conversation: JobConversation, paymentType: 
   return payment?.provider_reference ?? null;
 }
 
-function ReceiptLink({ reference, children }: { reference: string | null; children: string }) {
+function ReceiptLink({ reference, children, onOpen }: { reference: string | null; children: string; onOpen: (reference: string) => void }) {
   if (!reference) return null;
 
   return (
-    <a
+    <button
       className="inline-flex min-h-9 items-center justify-center rounded-[5px] border border-[#196c88] bg-white px-3 text-[13px] font-semibold text-[#196c88] shadow-sm transition hover:bg-slate-50"
-      href={`/payment/receipt?reference=${encodeURIComponent(reference)}`}
+      onClick={() => onOpen(reference)}
+      type="button"
     >
       {children}
-    </a>
+    </button>
   );
 }
 
@@ -1231,6 +1233,7 @@ function ActiveEngagementCard({
   const [revisionNote, setRevisionNote] = useState("");
   const [loadingDeliverableId, setLoadingDeliverableId] = useState("");
   const [localReviewStatus, setLocalReviewStatus] = useState<"submitted" | "skipped" | null>(null);
+  const [summaryReference, setSummaryReference] = useState("");
   const reviewSubmitted = Boolean(savedReview && !savedReview.skipped) || localReviewStatus === "submitted";
   const reviewHandled = Boolean(savedReview) || Boolean(localReviewStatus);
 
@@ -1437,7 +1440,7 @@ function ActiveEngagementCard({
             <div className="flex flex-wrap items-center gap-2">
               <span>Upfront Payment:</span>
               <span className="text-[18px] font-medium text-[#0fa269]">Payment made</span>
-              <ReceiptLink reference={upfrontReceiptReference}>Upfront receipt</ReceiptLink>
+              <ReceiptLink onOpen={setSummaryReference} reference={upfrontReceiptReference}>Upfront receipt</ReceiptLink>
             </div>
             <div className="flex flex-wrap items-center gap-2">
               <span>Remaining Payment:</span>
@@ -1447,7 +1450,7 @@ function ActiveEngagementCard({
               <span className={`text-[13px] ${finalPaid ? "text-[#0fa269]" : "text-[#f4a422]"}`}>
                 {finalPaid ? "Payment made" : "Released after job confirmation"}
               </span>
-              <ReceiptLink reference={finalReceiptReference}>Final receipt</ReceiptLink>
+              <ReceiptLink onOpen={setSummaryReference} reference={finalReceiptReference}>Final receipt</ReceiptLink>
             </div>
           </div>
         </div>
@@ -1546,6 +1549,7 @@ function ActiveEngagementCard({
       ) : null}
       </>
       ) : null}
+      {summaryReference ? <PaymentSummaryModal onClose={() => setSummaryReference("")} reference={summaryReference} /> : null}
     </article>
   );
 }

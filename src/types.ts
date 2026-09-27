@@ -17,6 +17,8 @@ export type Profile = {
   last_name: string;
   phone_verified: boolean;
   avatar_url?: string | null;
+  location?: string | null;
+  state?: string | null;
   professional_profiles?: ProfessionalProfile | ProfessionalProfile[] | null;
 };
 
@@ -301,6 +303,11 @@ export type AppointmentAvailability = {
   starts_at: string;
   ends_at: string;
   status: "open" | "booked" | "blocked" | string;
+  capacity: number;
+  is_paused: boolean;
+  confirmed_count?: number;
+  remaining_count?: number;
+  has_bookings?: boolean;
   note: string | null;
   created_at: string;
   updated_at: string;
@@ -338,15 +345,20 @@ export type Appointment = {
   payment_made_at?: string | null;
   payment_made_by?: string | null;
   payment_reference?: string | null;
+  price_amount?: number | string | null;
+  price_currency?: string | null;
   hired_at?: string | null;
   hired_by?: string | null;
   unread_message_count?: number;
   unread_update_count?: number;
   unread_update_notification_ids?: string[];
+  latest_message_at?: string | null;
+  latest_update_at?: string | null;
   latest_indicator_at?: string | null;
+  review?: { id: string; rating: number | null; review_text: string | null; skipped: boolean; created_at: string } | { id: string; rating: number | null; review_text: string | null; skipped: boolean; created_at: string }[] | null;
   created_at: string;
   updated_at: string;
-  client?: Pick<Profile, "id" | "first_name" | "last_name" | "avatar_url" | "phone_verified"> | null;
+  client?: Pick<Profile, "id" | "first_name" | "last_name" | "avatar_url" | "phone_verified" | "location" | "state"> | null;
   professional?: Pick<Profile, "id" | "first_name" | "last_name" | "avatar_url" | "phone_verified"> & {
     professional_profiles?: ProfessionalProfile | ProfessionalProfile[] | null;
   };
