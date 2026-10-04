@@ -17,3 +17,9 @@ export function searchProfessionals(token: string, filters: ProfessionalSearchFi
   const query = params.toString();
   return apiFetch<{ professionals: ProfessionalSearchResult[] }>(`/api/professionals${query ? `?${query}` : ""}`, { token });
 }
+
+export function recordProfessionalProfileView(token: string, professionalId: string) {
+  return apiFetch<{ recorded: boolean }>(`/api/professionals/${professionalId}/view`, {
+    token, method: "POST", body: { view_key: crypto.randomUUID() }
+  });
+}

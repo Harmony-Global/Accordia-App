@@ -220,7 +220,7 @@ function getProfessionalOnboardingSteps(profile: NonNullable<ReturnType<typeof u
       done: categoryCount > 0,
       title: "Set your categories",
       body: "Choose the kinds of service requests you want to receive",
-      href: "/professional/categories"
+      href: "/profile#categories"
     }
   ].filter((step) => !step.done);
 }
@@ -324,7 +324,7 @@ function ProfessionalDashboardHome({
           <DashboardActionCard
             body="Choose your categories so Accordia can match you with the right service requests"
             desktopTitle="Set Categories"
-            href="/professional/categories"
+            href="/profile#categories"
             icon={ListChecks}
             mobileTitle="Set Categories"
           />

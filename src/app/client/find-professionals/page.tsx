@@ -22,9 +22,10 @@ import { Button, CustomSelect, IconButton, PageLoader, ProfileAvatar, SkeletonBl
 import { useToast } from "@/components/toast";
 import { useRequireAuth } from "@/hooks/use-auth";
 import { useCategories } from "@/hooks/use-categories";
+import { CategorySelect } from "@/components/category-select";
 import { getAvailability, requestAppointment } from "@/services/appointment-service";
 import { getProfessionalInquiries, startProfessionalInquiry } from "@/services/inquiry-service";
-import { searchProfessionals, type ProfessionalSearchFilters } from "@/services/professional-service";
+import { recordProfessionalProfileView, searchProfessionals, type ProfessionalSearchFilters } from "@/services/professional-service";
 import type { AppointmentAvailability, Category, ProfessionalInquiry, ProfessionalSearchResult, ProfessionalService } from "@/types";
 
 const locationSuggestions = ["Lagos", "Abuja", "Port Harcourt", "Ibadan", "Enugu"];
@@ -491,6 +492,8 @@ function ProfessionalDetailModal({
         </div>
       </section>
 
+      {professional.portfolio && professional.portfolio.length > 0 ? <section className="mt-5"><h3 className="font-semibold text-[#5e5e5e]">Featured Portfolio &amp; Case Studies</h3><div className="mt-3 grid gap-3 sm:grid-cols-2">{professional.portfolio.map((entry) => <article className="rounded-[5px] border border-[#d5e4e9] p-3" key={entry.id}>{entry.mime_type === "application/pdf" ? <a className="flex h-36 items-center justify-center bg-[#f8fbfc] text-[#196c88] underline" href={entry.file_url} rel="noreferrer" target="_blank">Open PDF</a> : <img alt={entry.title} className="h-36 w-full object-cover" src={entry.file_url} />}<h4 className="mt-2 font-medium text-[#5e5e5e]">{entry.title}</h4>{entry.description ? <p className="mt-1 text-sm text-[#757575]">{entry.description}</p> : null}</article>)}</div></section> : null}
+
       <section className="mt-5">
         <h3 className="font-semibold text-[#5e5e5e]">Services and products</h3>
         {services.length === 0 ? <p className="mt-2 text-sm text-[#757575]">No active services listed.</p> : null}
@@ -580,10 +583,14 @@ function ClientProfessionalsContent() {
   const token = useRequireAuth();
   const searchParams = useSearchParams();
   const showToast = useToast();
-  const { categories, loading: categoriesLoading } = useCategories();
+  const { categories, loading: categoriesLoading } = useCategories("hierarchy");
   const [professionals, setProfessionals] = useState<ProfessionalSearchResult[]>([]);
   const [recommendedProfessionals, setRecommendedProfessionals] = useState<ProfessionalSearchResult[]>([]);
   const [selectedProfessional, setSelectedProfessional] = useState<ProfessionalSearchResult | null>(null);
+  function viewProfessional(professional: ProfessionalSearchResult) {
+    setSelectedProfessional(professional);
+    if (token && professional.user_id) void recordProfessionalProfileView(token, professional.user_id).catch(() => {});
+  }
   const [activeInquiry, setActiveInquiry] = useState<ProfessionalInquiry | null>(null);
   const [openedInquiryId, setOpenedInquiryId] = useState("");
   const [filters, setFilters] = useState<ProfessionalSearchFilters>({});
@@ -696,10 +703,7 @@ function ClientProfessionalsContent() {
               <StyledInput name="q" onChange={(event) => updateFormFilter("q", event.target.value)} placeholder="Hairstylist, Therapist..." value={formFilters.q ?? ""} />
             </SearchField>
             <SearchField label="Categories">
-              <StyledSelect name="category_id" onChange={(event) => updateFormFilter("category_id", event.target.value)} value={formFilters.category_id ?? ""}>
-                <option value="">All Categories</option>
-                {categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
-              </StyledSelect>
+              <CategorySelect categories={categories} includeLegacy mode="filter" name="category_id" onChange={(value) => updateFormFilter("category_id", value)} placeholder="All Categories" value={formFilters.category_id ?? ""} />
             </SearchField>
             <SearchField label="Location">
               <StyledInput list="professional-location-suggestions" name="state" onChange={(event) => updateFormFilter("state", event.target.value)} placeholder="Lagos" value={formFilters.state ?? ""} />
@@ -736,15 +740,15 @@ function ClientProfessionalsContent() {
               <p className="text-[24px] font-normal leading-[1.4] text-[#5e5e5e]">
                 {professionals.length}+ <span className="text-[#a4a4a4]">Service Providers found</span>
               </p>
-              <ProfessionalSection title="Search Results" professionals={professionals} onViewProfile={setSelectedProfessional} />
+              <ProfessionalSection title="Search Results" professionals={professionals} onViewProfile={viewProfessional} />
             </div>
           ) : (
             <EmptySearchState />
           )
         ) : (
           <div className="grid gap-6">
-            <ProfessionalSection title="Recommended Service Providers" professionals={recommendedProfessionals} onViewProfile={setSelectedProfessional} />
-            <ProfessionalSection title="Top Service Providers" professionals={rankedProfessionals} onViewProfile={setSelectedProfessional} />
+            <ProfessionalSection title="Recommended Service Providers" professionals={recommendedProfessionals} onViewProfile={viewProfessional} />
+            <ProfessionalSection title="Top Service Providers" professionals={rankedProfessionals} onViewProfile={viewProfessional} />
           </div>
         )}
 

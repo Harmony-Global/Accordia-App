@@ -90,6 +90,22 @@ export function TextField({
   );
 }
 
+export function AccentCheckbox({
+  children,
+  className = "",
+  ...props
+}: Omit<InputHTMLAttributes<HTMLInputElement>, "type"> & { children: React.ReactNode }) {
+  return (
+    <label className={`inline-flex cursor-pointer items-start gap-2 text-sm text-[#5e5e5e] ${className}`}>
+      <input className="peer sr-only" type="checkbox" {...props} />
+      <span aria-hidden="true" className="mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-[3px] border border-[#8aaab5] bg-white text-white peer-checked:border-[#196c88] peer-checked:bg-[#196c88] peer-focus-visible:ring-2 peer-focus-visible:ring-[#196c88] peer-focus-visible:ring-offset-2">
+        <Check size={14} strokeWidth={3} />
+      </span>
+      <span>{children}</span>
+    </label>
+  );
+}
+
 type CustomSelectOption = {
   value: string;
   label: string;

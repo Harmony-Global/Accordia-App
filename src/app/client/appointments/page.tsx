@@ -11,6 +11,7 @@ import { useToast } from "@/components/toast";
 import { useProfile } from "@/hooks/use-auth";
 import { getAppointments, openAppointmentChat, reviewAppointment, updateAppointmentStatus } from "@/services/appointment-service";
 import { markNotificationRead } from "@/services/notification-service";
+import { recordProfessionalProfileView } from "@/services/professional-service";
 import type { Appointment, Category, ProfessionalInquiry, ProfessionalProfile } from "@/types";
 
 function formatDateTime(value: string) {
@@ -468,6 +469,10 @@ export default function ClientAppointmentsPage() {
   const [cancelTarget, setCancelTarget] = useState<Appointment | null>(null);
   const [expiredHelpId, setExpiredHelpId] = useState("");
   const [profileTarget, setProfileTarget] = useState<Appointment | null>(null);
+  function viewProfessional(appointment: Appointment) {
+    setProfileTarget(appointment);
+    if (token && appointment.professional_id) void recordProfessionalProfileView(token, appointment.professional_id).catch(() => {});
+  }
   const [chatInquiry, setChatInquiry] = useState<ProfessionalInquiry | null>(null);
   const [chatAppointment, setChatAppointment] = useState<Appointment | null>(null);
   const [chatPaymentSuccess, setChatPaymentSuccess] = useState(false);
@@ -647,7 +652,7 @@ export default function ClientAppointmentsPage() {
                   void acknowledgeAppointmentUpdates(item);
                 }}
                 onReview={setReviewTarget}
-                onViewProfile={setProfileTarget}
+                onViewProfile={viewProfessional}
               />
             ))}
           </div>
