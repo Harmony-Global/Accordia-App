@@ -5,6 +5,7 @@ import type { FormEvent } from "react";
 import { useEffect, useState } from "react";
 import { Minus, Plus } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
+import { CategorySelect } from "@/components/category-select";
 import { Button, CustomSelect, Spinner } from "@/components/ui";
 import { useToast } from "@/components/toast";
 import { useCategories } from "@/hooks/use-categories";
@@ -25,8 +26,9 @@ export default function NewJobPage() {
   const router = useRouter();
   const showToast = useToast();
   const token = useRequireAuth();
-  const { categories, error: categoryError, loading: categoriesLoading } = useCategories();
+  const { categories, error: categoryError, loading: categoriesLoading } = useCategories("hierarchy");
   const [loading, setLoading] = useState(false);
+  const [categoryId, setCategoryId] = useState("");
   const [numberOfProfessionalsInput, setNumberOfProfessionalsInput] = useState("1");
   const [workType, setWorkType] = useState<WorkType>("in_person");
   const [priceType, setPriceType] = useState<PriceType>("negotiable");
@@ -46,6 +48,9 @@ export default function NewJobPage() {
     const form = new FormData(event.currentTarget);
     try {
       if (!token) throw new Error("Your session has expired. Please log in again.");
+      if (!categories.some((category) => category.id === categoryId && category.level === "sub")) {
+        throw new Error("Choose a subcategory for your request.");
+      }
       const priceAmount = Number(form.get("price_amount"));
       if (!Number.isFinite(priceAmount) || priceAmount < 0) {
         throw new Error("Enter a valid request price.");
@@ -53,7 +58,7 @@ export default function NewJobPage() {
       await createJob(token, {
         title: String(form.get("title")),
         description: String(form.get("description")),
-        category_id: String(form.get("category_id")),
+        category_id: categoryId,
         number_of_professionals: clampProfessionals(Number(numberOfProfessionalsInput)),
         price_type: priceType,
         price_amount: priceAmount,
@@ -95,21 +100,7 @@ export default function NewJobPage() {
             />
           </label>
 
-          <label className="block text-sm font-medium leading-6 text-[#585858]">
-            Category
-            <CustomSelect
-              className="mt-2"
-              triggerClassName="h-12 rounded-[10px] border-[#d0d0d0] px-4 text-sm text-ink hover:border-[#a4a4a4]"
-              disabled={categoriesLoading || categories.length === 0}
-              name="category_id"
-              required
-            >
-              <option value="">{categoriesLoading ? "Loading categories..." : "Select Category"}</option>
-              {categories.map((category) => (
-                <option key={category.id} value={category.id}>{category.name}</option>
-              ))}
-            </CustomSelect>
-          </label>
+          <div className="block text-sm font-medium leading-6 text-[#585858]">Category<CategorySelect categories={categories} className="mt-2" disabled={categoriesLoading || categories.length === 0} mode="subcategory" onChange={setCategoryId} placeholder={categoriesLoading ? "Loading categories..." : "Select Category"} value={categoryId} /></div>
 
           <label className="block text-sm font-medium leading-6 text-[#585858]">
             Number of Professionals

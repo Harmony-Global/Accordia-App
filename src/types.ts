@@ -6,19 +6,22 @@ export type Category = {
   slug: string;
   icon: string | null;
   description: string | null;
+  level?: "legacy" | "main" | "sub" | "service";
+  parent_id?: string | null;
+  created_by?: string | null;
 };
 
 export type Profile = {
   id: string;
   email: string;
   phone: string;
+  location?: string | null;
+  state?: string | null;
   role: Role;
   first_name: string;
   last_name: string;
   phone_verified: boolean;
   avatar_url?: string | null;
-  location?: string | null;
-  state?: string | null;
   professional_profiles?: ProfessionalProfile | ProfessionalProfile[] | null;
 };
 
@@ -37,7 +40,18 @@ export type ProfessionalProfile = {
   state: string | null;
   is_available: boolean;
   professional_categories?: { category: Category }[];
+  professional_main_categories?: { category: Category }[];
   professional_services?: ProfessionalService[];
+};
+
+export type PortfolioEntry = {
+  id: string;
+  professional_id: string;
+  title: string;
+  description: string | null;
+  mime_type: string;
+  file_url: string;
+  created_at: string;
 };
 
 export type ProfessionalService = {
@@ -52,6 +66,11 @@ export type ProfessionalService = {
   price_max: number;
   currency: string;
   is_active: boolean;
+  is_visible_on_profile?: boolean;
+  archived_at?: string | null;
+  activity_anchor_at?: string;
+  pause_reason?: "manual" | "automatic" | null;
+  images?: { image_url: string; position: number }[];
   created_at: string;
   updated_at: string;
   category?: Category | null;
@@ -280,6 +299,7 @@ export type ProfessionalSearchResult = ProfessionalProfile & {
   profile?: Pick<Profile, "id" | "first_name" | "last_name" | "avatar_url" | "phone_verified"> | null;
   rating_average?: number | null;
   review_count?: number;
+  portfolio?: PortfolioEntry[];
 };
 
 export type ProfessionalInquiry = {
@@ -358,7 +378,7 @@ export type Appointment = {
   review?: { id: string; rating: number | null; review_text: string | null; skipped: boolean; created_at: string } | { id: string; rating: number | null; review_text: string | null; skipped: boolean; created_at: string }[] | null;
   created_at: string;
   updated_at: string;
-  client?: Pick<Profile, "id" | "first_name" | "last_name" | "avatar_url" | "phone_verified" | "location" | "state"> | null;
+  client?: Pick<Profile, "id" | "first_name" | "last_name" | "avatar_url" | "phone_verified"> | null;
   professional?: Pick<Profile, "id" | "first_name" | "last_name" | "avatar_url" | "phone_verified"> & {
     professional_profiles?: ProfessionalProfile | ProfessionalProfile[] | null;
   };

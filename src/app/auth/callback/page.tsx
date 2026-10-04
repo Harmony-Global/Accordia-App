@@ -40,14 +40,15 @@ export default function AuthCallbackPage() {
   const [saving, setSaving] = useState(false);
 
   function handleOAuthResponse(accessToken: string, data: OAuthProfileResponse, nextRefreshToken?: string | null) {
+    const isEmailChange = new URLSearchParams(window.location.search).get("flow") === "email-change";
     if (data.profile) {
       if (!data.app_session_id) {
         throw new Error("Could not create a secure app session.");
       }
       setLoading(true);
       session.setSession(accessToken, data.profile.role, data.app_session_id, data.profile, nextRefreshToken);
-      showToast({ tone: "success", title: "Google sign-in successful", body: "Your workspace is ready." });
-      router.replace(routeAfterAuth(data.profile));
+      showToast({ tone: "success", title: isEmailChange ? "Email confirmation recorded" : "Google sign-in successful", body: isEmailChange ? "If your address has not changed yet, confirm the link in the other inbox too." : "Your workspace is ready." });
+      router.replace(isEmailChange ? "/profile" : routeAfterAuth(data.profile));
       return true;
     }
 
@@ -65,14 +66,15 @@ export default function AuthCallbackPage() {
     async function finishOAuth() {
       const params = readOAuthParams();
 
+      const isEmailChange = new URLSearchParams(window.location.search).get("flow") === "email-change";
       if (params.error) {
-        showToast({ tone: "error", title: "Google sign-in failed", body: params.error });
+        showToast({ tone: "error", title: isEmailChange ? "Email confirmation failed" : "Google sign-in failed", body: params.error });
         router.replace("/login");
         return;
       }
 
       if (!params.accessToken) {
-        showToast({ tone: "error", title: "Google sign-in failed", body: "No session token was returned." });
+        showToast({ tone: "error", title: isEmailChange ? "Email confirmation failed" : "Google sign-in failed", body: "No session token was returned." });
         router.replace("/login");
         return;
       }
@@ -86,7 +88,7 @@ export default function AuthCallbackPage() {
         if (isRedirecting) return;
       } catch (err) {
         const message = err instanceof Error ? err.message : "Could not finish Google sign-in";
-        showToast({ tone: "error", title: "Google sign-in failed", body: message });
+        showToast({ tone: "error", title: isEmailChange ? "Email confirmation failed" : "Google sign-in failed", body: message });
         router.replace("/login");
       } finally {
         setLoading(false);

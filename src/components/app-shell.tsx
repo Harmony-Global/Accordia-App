@@ -39,6 +39,7 @@ export function AppShell({
   const [notifications, setNotifications] = useState<Notification[]>(cachedUnreadNotifications);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [profileMenuOpen, setProfileMenuOpen] = useState(false);
   const notificationButtonRef = useRef<HTMLButtonElement>(null);
   const mobileMenuNotificationButtonRef = useRef<HTMLButtonElement>(null);
   const [notificationAnchor, setNotificationAnchor] = useState<"nav" | "menu">("nav");
@@ -171,6 +172,7 @@ export function AppShell({
 
   useEffect(() => {
     setMobileMenuOpen(false);
+    setProfileMenuOpen(false);
   }, [pathname]);
 
   useEffect(() => {
@@ -206,8 +208,8 @@ export function AppShell({
           <Link className={navClass(pathname.startsWith("/professional/appointments"))} href="/professional/appointments">
             Appointments
           </Link>
-          <Link className={navClass(pathname.startsWith("/professional/categories"))} href="/professional/categories">
-            Categories
+          <Link className={navClass(pathname.startsWith("/professional/services"))} href="/professional/services">
+            My Services
           </Link>
         </>
       ) : null}
@@ -247,19 +249,35 @@ export function AppShell({
     </button>
   );
 
-  const profileButton = (
-    <Link
-      aria-label="Profile"
+  const profileButton = isModernShell ? (
+    <button
+      aria-label="Account menu"
+      aria-expanded={profileMenuOpen}
       className={`grid h-10 w-10 shrink-0 place-items-center overflow-hidden rounded-full border transition ${pathname === "/profile" ? "border-brand bg-teal-50 text-brand ring-2 ring-teal-100" : "border-line bg-slate-100 text-brand hover:border-brand"}`}
-      href="/profile"
+      onClick={() => { setNotificationsOpen(false); setProfileMenuOpen((open) => !open); }}
+      type="button"
     >
       {profile?.avatar_url ? (
         <img alt="" className="h-full w-full rounded-full object-cover" decoding="async" src={profile.avatar_url} />
       ) : (
         <UserRound size={18} />
       )}
-    </Link>
-  );
+    </button>
+  ) : <Link aria-label="Profile" className="grid h-10 w-10 place-items-center overflow-hidden rounded-full border border-line bg-slate-100 text-brand" href="/profile">{profile?.avatar_url ? <img alt="" className="h-full w-full object-cover" src={profile.avatar_url} /> : <UserRound size={18} />}</Link>;
+
+  const profileMenu = profileMenuOpen && isModernShell ? (
+    <>
+      <button aria-label="Close account menu" className="fixed inset-0 z-[85] bg-black/10 lg:bg-transparent" onClick={() => setProfileMenuOpen(false)} type="button" />
+      <div aria-label="Account menu" className="fixed left-4 right-4 top-20 z-[90] rounded-[8px] bg-white p-5 shadow-xl sm:left-auto sm:right-6 sm:w-[330px] lg:right-[max(2rem,calc((100vw-1180px)/2))] lg:top-20" role="dialog">
+        <p className="truncate text-lg font-medium text-[#5e5e5e]">{displayName}</p>
+        <p className="mt-1 text-sm text-[#999]">{phoneStatus}</p>
+        <div className="my-4 border-t border-[#aaa]" />
+        <Link className="block rounded-[5px] bg-[#f7fafb] px-3 py-3 text-[#5e5e5e] hover:bg-[#edf4f6]" href="/profile" onClick={() => setProfileMenuOpen(false)}>Profile</Link>
+        <div aria-disabled="true" className="px-3 py-3 text-[#aaa]" title="Payment History is not available yet">Payment History</div>
+        <button className="block w-full px-3 py-3 text-left text-[#5e5e5e] hover:text-[#196c88]" onClick={() => { setProfileMenuOpen(false); logout(); }} type="button">Logout</button>
+      </div>
+    </>
+  ) : null;
 
   function openNotificationsFromMenu() {
     setNotificationAnchor("menu");
@@ -278,7 +296,7 @@ export function AppShell({
     { href: "/dashboard", label: "Home", icon: Home, active: pathname === "/dashboard" },
     { href: "/professional/jobs", label: "Service Requests", icon: BriefcaseBusiness, active: pathname.startsWith("/professional/jobs") },
     { href: "/professional/appointments", label: "Appointments", icon: CalendarDays, active: pathname.startsWith("/professional/appointments") },
-    { href: "/professional/categories", label: "Categories", icon: Tags, active: pathname.startsWith("/professional/categories") }
+    { href: "/professional/services", label: "My Services", icon: Tags, active: pathname.startsWith("/professional/services") }
   ];
 
   const modernMenuLinks = isProfessionalShell ? professionalMenuLinks : clientMenuLinks;
@@ -286,7 +304,7 @@ export function AppShell({
     ? [
         { href: "/professional/jobs", label: "Service Requests", active: pathname.startsWith("/professional/jobs") },
         { href: "/professional/appointments", label: "Appointments", active: pathname.startsWith("/professional/appointments") },
-        { href: "/professional/categories", label: "Categories", active: pathname.startsWith("/professional/categories") }
+        { href: "/professional/services", label: "My services", active: pathname.startsWith("/professional/services") }
       ]
     : [
         { href: "/client/my-requests", label: "My request", active: pathname.startsWith("/client/my-requests") },
@@ -325,10 +343,11 @@ export function AppShell({
               Create Request
             </Link>
           ) : null}
-          <button className="inline-flex items-center gap-2 px-3 py-2 text-[#196c88] transition hover:text-[#14566d]" onClick={logout} type="button">
-            <LogOut size={18} />
-            Logout
-          </button>
+          {isProfessionalShell ? (
+            <Link className="inline-flex h-11 items-center justify-center rounded-[5px] bg-[#196c88] px-4 text-[15px] text-white transition hover:bg-[#14566d]" href="/professional/services?view=create">
+              Create Service
+            </Link>
+          ) : null}
           {profileButton}
         </nav>
       </div>
@@ -339,7 +358,7 @@ export function AppShell({
     <div className="fixed inset-0 z-[70] bg-black/25 lg:hidden">
       <aside className="flex h-full w-full flex-col overflow-y-auto bg-white p-6 shadow-xl md:max-w-[520px]">
         <div className="flex items-center justify-between gap-4 px-2">
-          <Link className="flex min-w-0 items-center gap-4" href="/profile">
+          <button className="flex min-w-0 items-center gap-4 text-left" onClick={() => { setMobileMenuOpen(false); setProfileMenuOpen(true); }} type="button">
             <span className="grid h-20 w-20 shrink-0 place-items-center overflow-hidden rounded-full bg-[#f2f6f8] text-[#196c88] md:h-[88px] md:w-[88px]">
               {profile?.avatar_url ? <img alt="" className="h-full w-full rounded-full object-cover" decoding="async" src={profile.avatar_url} /> : <UserRound size={34} strokeWidth={1.5} />}
             </span>
@@ -347,7 +366,7 @@ export function AppShell({
               <span className="block truncate text-[16px] leading-[1.5] text-[#5e5e5e]">{displayName}</span>
               <span className="block truncate text-[14px] font-medium leading-[1.5] text-[#a4a4a4]">{phoneStatus}</span>
             </span>
-          </Link>
+          </button>
           <button aria-label="Close menu" className="grid h-11 w-11 shrink-0 place-items-center text-black" onClick={() => setMobileMenuOpen(false)} type="button">
             <X size={26} strokeWidth={1.8} />
           </button>
@@ -390,14 +409,7 @@ export function AppShell({
               <div className="h-px bg-[#a4a4a4]" />
             </>
           ) : null}
-          <Link className="flex items-center gap-3" href="/profile">
-            <UserRound className="text-[#196c88]" size={24} strokeWidth={1.5} />
-            Profile
-          </Link>
-          <button className="flex items-center gap-3 text-left" onClick={logout} type="button">
-            <LogOut className="text-[#196c88]" size={24} strokeWidth={1.5} />
-            Logout
-          </button>
+          <button className="flex items-center gap-3 text-left" onClick={() => { setMobileMenuOpen(false); setProfileMenuOpen(true); }} type="button"><UserRound className="text-[#196c88]" size={24} strokeWidth={1.5} />Account</button>
         </div>
       </aside>
     </div>
@@ -408,6 +420,7 @@ export function AppShell({
       <div className="min-h-screen bg-[#fcfdfd]">
         {modernNav}
         {modernMobileMenu}
+        {profileMenu}
         {notificationsOpen ? (
           <>
             <button aria-label="Close notifications" className="fixed inset-0 z-[75] cursor-default bg-transparent" onClick={() => setNotificationsOpen(false)} type="button" />

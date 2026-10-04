@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertCircle, BriefcaseBusiness, CalendarDays, Check, Edit2, MapPin, MessageSquareText, Pause, Play, Plus, Star, Trash2, X } from "lucide-react";
+import { AlertCircle, BriefcaseBusiness, CalendarDays, Check, Edit2, MessageSquareText, Pause, Play, Plus, Star, Trash2, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { AppShell, EmptyState } from "@/components/app-shell";
 import { ChatModal } from "@/components/chat-modal";
@@ -187,7 +187,7 @@ export default function ProfessionalAppointmentsPage() {
             <div className="mt-5 grid gap-5 text-sm sm:grid-cols-3 sm:items-start">
               <div className="flex items-center gap-3">
                 <ProfileAvatar avatarUrl={item.client?.avatar_url} className="h-10 w-10" iconSize={18} />
-                <div><p className="font-semibold text-[#5e5e5e]">{name(item.client)}</p><p className="flex items-center gap-1 text-[#757575]"><MapPin size={15} /> {[item.client?.location, item.client?.state].filter(Boolean).join(", ") || "Location not provided"}</p></div>
+                <div><p className="font-semibold text-[#5e5e5e]">{name(item.client)}</p></div>
               </div>
               <div><p className="font-semibold text-[#5e5e5e]">Appointment Schedule</p><p className="mt-1 text-[#999]">{time(item.starts_at)} - {time(item.ends_at)}</p></div>
               <div className="flex flex-wrap justify-start gap-2 sm:justify-end">
