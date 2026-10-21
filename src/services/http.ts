@@ -295,3 +295,21 @@ export async function apiFormData<T>(path: string, formData: FormData, token?: s
   return executeRequest();
 }
 
+export async function apiDocument(path: string, token: string): Promise<string> {
+  async function requestWith(activeToken: string, retry: boolean): Promise<string> {
+    const headers: Record<string, string> = {};
+    appendAuthHeaders(headers, activeToken);
+    const response = await fetch(requestUrl(path), { headers, cache: "no-store" });
+    if (isSessionFailure(path, response) && retry) {
+      const renewed = await renewSession();
+      if (renewed) return requestWith(renewed, false);
+    }
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({}));
+      throw new Error(friendlyApiMessage(path, response, data));
+    }
+    return response.text();
+  }
+  return requestWith(token, true);
+}
+

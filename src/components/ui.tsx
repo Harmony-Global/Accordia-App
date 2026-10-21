@@ -17,10 +17,11 @@ export function Button({
   variant = "primary",
   className = "",
   ...props
-}: ButtonHTMLAttributes<HTMLButtonElement> & { size?: "sm" | "md" | "lg"; variant?: "primary" | "secondary" | "warning" }) {
+}: ButtonHTMLAttributes<HTMLButtonElement> & { size?: "sm" | "md" | "lg"; variant?: "primary" | "secondary" | "outline" | "warning" }) {
   const variants = {
     primary: "bg-brand text-white hover:bg-[#125A73]",
     secondary: "border border-line bg-white text-ink hover:bg-slate-50",
+    outline: "border border-brand bg-white text-brand hover:bg-teal-50 disabled:hover:bg-white",
     warning: "bg-amber text-white hover:bg-[#D98E13]"
   };
   const sizes = {
