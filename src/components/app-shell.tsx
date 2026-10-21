@@ -229,6 +229,7 @@ export function AppShell({
           </Link>
         </>
       ) : null}
+      {role === "admin" ? <Link className={navClass(pathname.startsWith("/admin/payouts"))} href="/admin/payouts">Payouts</Link> : null}
     </>
   );
 
@@ -273,7 +274,7 @@ export function AppShell({
         <p className="mt-1 text-sm text-[#999]">{phoneStatus}</p>
         <div className="my-4 border-t border-[#aaa]" />
         <Link className="block rounded-[5px] bg-[#f7fafb] px-3 py-3 text-[#5e5e5e] hover:bg-[#edf4f6]" href="/profile" onClick={() => setProfileMenuOpen(false)}>Profile</Link>
-        <div aria-disabled="true" className="px-3 py-3 text-[#aaa]" title="Payment History is not available yet">Payment History</div>
+        {isProfessionalShell ? <Link className="block px-3 py-3 text-[#5e5e5e] hover:text-[#196c88]" href="/professional/payouts" onClick={() => setProfileMenuOpen(false)}>Payment History</Link> : <div aria-disabled="true" className="px-3 py-3 text-[#aaa]" title="Payment History is not available yet">Payment History</div>}
         <button className="block w-full px-3 py-3 text-left text-[#5e5e5e] hover:text-[#196c88]" onClick={() => { setProfileMenuOpen(false); logout(); }} type="button">Logout</button>
       </div>
     </>

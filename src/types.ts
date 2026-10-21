@@ -17,6 +17,7 @@ export type Profile = {
   phone: string;
   location?: string | null;
   state?: string | null;
+  about_me?: string | null;
   role: Role;
   first_name: string;
   last_name: string;

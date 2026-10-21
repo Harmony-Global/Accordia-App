@@ -13,6 +13,7 @@ export type ProfilePatch = {
     phone?: string;
     location?: string | null;
     state?: string | null;
+    about_me?: string | null;
     avatar_url?: string | null;
   };
   professional_profile?: {
