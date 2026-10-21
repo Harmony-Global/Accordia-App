@@ -1,5 +1,6 @@
 .next
 .next-codex-preview
+.next-codex
 node_modules
 .env
 .env.local
