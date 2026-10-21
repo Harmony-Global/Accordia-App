@@ -3,7 +3,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { Bell, BriefcaseBusiness, CalendarDays, CheckCheck, Home, LogOut, Menu, Plus, Search, Send, Tags, UserRound, X } from "lucide-react";
+import { ArrowLeft, Bell, BriefcaseBusiness, CalendarDays, CheckCheck, Home, LogOut, Menu, Plus, Search, Send, Tags, UserRound, X } from "lucide-react";
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { BrandLockup } from "@/components/brand";
 import { useAuth } from "@/hooks/use-auth";
@@ -266,16 +266,22 @@ export function AppShell({
     </button>
   ) : <Link aria-label="Profile" className="grid h-10 w-10 place-items-center overflow-hidden rounded-full border border-line bg-slate-100 text-brand" href="/profile">{profile?.avatar_url ? <img alt="" className="h-full w-full object-cover" src={profile.avatar_url} /> : <UserRound size={18} />}</Link>;
 
-  const profileMenu = profileMenuOpen && isModernShell ? (
+  const profileMenuContent = (
+    <>
+      <p className="truncate text-lg font-medium text-[#5e5e5e]">{displayName}</p>
+      <p className="mt-1 text-sm text-[#999]">{phoneStatus}</p>
+      <div className="my-4 border-t border-[#aaa]" />
+      <Link className="block rounded-[5px] bg-[#f7fafb] px-3 py-3 text-[#5e5e5e] hover:bg-[#edf4f6]" href="/profile" onClick={() => { setProfileMenuOpen(false); setMobileMenuOpen(false); }}>Profile</Link>
+      {isProfessionalShell ? <Link className="block px-3 py-3 text-[#5e5e5e] hover:text-[#196c88]" href="/professional/payouts" onClick={() => { setProfileMenuOpen(false); setMobileMenuOpen(false); }}>Payment History</Link> : <div aria-disabled="true" className="px-3 py-3 text-[#aaa]" title="Payment History is not available yet">Payment History</div>}
+      <button className="block w-full px-3 py-3 text-left text-[#5e5e5e] hover:text-[#196c88]" onClick={() => { setProfileMenuOpen(false); setMobileMenuOpen(false); logout(); }} type="button">Logout</button>
+    </>
+  );
+
+  const profileMenu = profileMenuOpen && isModernShell && !mobileMenuOpen ? (
     <>
       <button aria-label="Close account menu" className="fixed inset-0 z-[85] bg-black/10 lg:bg-transparent" onClick={() => setProfileMenuOpen(false)} type="button" />
       <div aria-label="Account menu" className="fixed left-4 right-4 top-20 z-[90] rounded-[8px] bg-white p-5 shadow-xl sm:left-auto sm:right-6 sm:w-[330px] lg:right-[max(2rem,calc((100vw-1180px)/2))] lg:top-20" role="dialog">
-        <p className="truncate text-lg font-medium text-[#5e5e5e]">{displayName}</p>
-        <p className="mt-1 text-sm text-[#999]">{phoneStatus}</p>
-        <div className="my-4 border-t border-[#aaa]" />
-        <Link className="block rounded-[5px] bg-[#f7fafb] px-3 py-3 text-[#5e5e5e] hover:bg-[#edf4f6]" href="/profile" onClick={() => setProfileMenuOpen(false)}>Profile</Link>
-        {isProfessionalShell ? <Link className="block px-3 py-3 text-[#5e5e5e] hover:text-[#196c88]" href="/professional/payouts" onClick={() => setProfileMenuOpen(false)}>Payment History</Link> : <div aria-disabled="true" className="px-3 py-3 text-[#aaa]" title="Payment History is not available yet">Payment History</div>}
-        <button className="block w-full px-3 py-3 text-left text-[#5e5e5e] hover:text-[#196c88]" onClick={() => { setProfileMenuOpen(false); logout(); }} type="button">Logout</button>
+        {profileMenuContent}
       </div>
     </>
   ) : null;
@@ -359,7 +365,7 @@ export function AppShell({
     <div className="fixed inset-0 z-[70] bg-black/25 lg:hidden">
       <aside className="flex h-full w-full flex-col overflow-y-auto bg-white p-6 shadow-xl md:max-w-[520px]">
         <div className="flex items-center justify-between gap-4 px-2">
-          <button className="flex min-w-0 items-center gap-4 text-left" onClick={() => { setMobileMenuOpen(false); setProfileMenuOpen(true); }} type="button">
+          {profileMenuOpen ? <button className="flex min-h-11 items-center gap-2 text-[#196c88]" onClick={() => setProfileMenuOpen(false)} type="button"><ArrowLeft size={20} />Menu</button> : <button className="flex min-w-0 items-center gap-4 text-left" onClick={() => setProfileMenuOpen(true)} type="button">
             <span className="grid h-20 w-20 shrink-0 place-items-center overflow-hidden rounded-full bg-[#f2f6f8] text-[#196c88] md:h-[88px] md:w-[88px]">
               {profile?.avatar_url ? <img alt="" className="h-full w-full rounded-full object-cover" decoding="async" src={profile.avatar_url} /> : <UserRound size={34} strokeWidth={1.5} />}
             </span>
@@ -367,12 +373,13 @@ export function AppShell({
               <span className="block truncate text-[16px] leading-[1.5] text-[#5e5e5e]">{displayName}</span>
               <span className="block truncate text-[14px] font-medium leading-[1.5] text-[#a4a4a4]">{phoneStatus}</span>
             </span>
-          </button>
-          <button aria-label="Close menu" className="grid h-11 w-11 shrink-0 place-items-center text-black" onClick={() => setMobileMenuOpen(false)} type="button">
+          </button>}
+          <button aria-label="Close menu" className="grid h-11 w-11 shrink-0 place-items-center text-black" onClick={() => { setMobileMenuOpen(false); setProfileMenuOpen(false); }} type="button">
             <X size={26} strokeWidth={1.8} />
           </button>
         </div>
 
+        {profileMenuOpen ? <div aria-label="Account menu" className="mt-8 px-2" role="dialog">{profileMenuContent}</div> : <>
         <div className="mt-6 h-px bg-[#a4a4a4]" />
 
         <nav className="mt-8 grid gap-6 px-2 text-[16px] leading-[1.5]">
@@ -410,8 +417,9 @@ export function AppShell({
               <div className="h-px bg-[#a4a4a4]" />
             </>
           ) : null}
-          <button className="flex items-center gap-3 text-left" onClick={() => { setMobileMenuOpen(false); setProfileMenuOpen(true); }} type="button"><UserRound className="text-[#196c88]" size={24} strokeWidth={1.5} />Account</button>
+          <button className="flex items-center gap-3 text-left" onClick={() => setProfileMenuOpen(true)} type="button"><UserRound className="text-[#196c88]" size={24} strokeWidth={1.5} />Account</button>
         </div>
+        </>}
       </aside>
     </div>
   ) : null;

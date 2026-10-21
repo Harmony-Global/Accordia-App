@@ -137,6 +137,7 @@ export function CustomSelect({
   className = "",
   triggerClassName = "",
   menuClassName = "",
+  searchable = false,
   value,
   defaultValue,
   onChange,
@@ -148,6 +149,7 @@ export function CustomSelect({
 }: SelectHTMLAttributes<HTMLSelectElement> & {
   triggerClassName?: string;
   menuClassName?: string;
+  searchable?: boolean;
 }) {
   const generatedId = useId();
   const buttonId = id ?? generatedId;
@@ -156,9 +158,13 @@ export function CustomSelect({
   const isControlled = value !== undefined;
   const [internalValue, setInternalValue] = useState(String(defaultValue ?? firstEnabledOption?.value ?? ""));
   const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState("");
   const rootRef = useRef<HTMLDivElement>(null);
   const selectedValue = String(isControlled ? value : internalValue);
   const selectedOption = options.find((option) => option.value === selectedValue) ?? firstEnabledOption;
+  const visibleOptions = searchable && search.trim()
+    ? options.filter((option) => option.label.toLowerCase().includes(search.trim().toLowerCase()))
+    : options;
 
   useEffect(() => {
     function handlePointerDown(event: PointerEvent) {
@@ -182,6 +188,7 @@ export function CustomSelect({
     if (option.disabled || disabled) return;
     if (!isControlled) setInternalValue(option.value);
     setOpen(false);
+    setSearch("");
     onChange?.({
       target: { value: option.value, name },
       currentTarget: { value: option.value, name }
@@ -199,7 +206,7 @@ export function CustomSelect({
         className={`flex w-full items-center justify-between gap-3 rounded-md border border-line bg-white px-3 py-3 text-left text-sm text-ink outline-none transition duration-200 hover:border-slate-300 focus:border-brand focus:ring-4 focus:ring-teal-100 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-muted ${triggerClassName}`}
         disabled={disabled}
         id={buttonId}
-        onClick={() => setOpen((current) => !current)}
+        onClick={() => { setSearch(""); setOpen((current) => !current); }}
         type="button"
       >
         <span className={selectedOption?.value ? "truncate" : "truncate text-muted"}>{selectedOption?.label ?? "Select option"}</span>
@@ -212,7 +219,8 @@ export function CustomSelect({
           id={`${buttonId}-menu`}
           role="listbox"
         >
-          {options.map((option) => {
+          {searchable ? <div className="sticky top-0 bg-white p-2"><input aria-label="Search options" autoFocus className="h-10 w-full rounded-md border border-line px-3 text-sm outline-none focus:border-brand" onChange={(event) => setSearch(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") event.preventDefault(); }} placeholder="Search" type="search" value={search} /></div> : null}
+          {visibleOptions.map((option) => {
             const selected = option.value === selectedValue;
             return (
               <button
@@ -229,6 +237,7 @@ export function CustomSelect({
               </button>
             );
           })}
+          {visibleOptions.length === 0 ? <p className="px-3 py-3 text-sm text-muted">No matches</p> : null}
         </div>
       ) : null}
     </div>

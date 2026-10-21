@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ChevronDown, ChevronLeft, ChevronRight, ChevronUp, X } from "lucide-react";
 import { CustomSelect } from "@/components/ui";
 
@@ -586,4 +586,67 @@ export function ScheduleServiceCalendar({
       </div>
     </div>
   );
+}
+
+function calendarDateKey(date: Date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
+function parseCalendarDateKey(value?: string) {
+  if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
+  const [year, month, day] = value.split("-").map(Number);
+  const date = new Date(year, month - 1, day);
+  return calendarDateKey(date) === value ? date : null;
+}
+
+function lagosCalendarToday() {
+  const parts = new Intl.DateTimeFormat("en-GB", { timeZone: "Africa/Lagos", year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(new Date());
+  const value = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return new Date(Number(value.year), Number(value.month) - 1, Number(value.day));
+}
+
+export function DateRangeCalendar({ from, to, onApply, onClose }: {
+  from?: string;
+  to?: string;
+  onApply: (from: string, to: string) => void;
+  onClose: () => void;
+}) {
+  const [start, setStart] = useState(from ?? "");
+  const [end, setEnd] = useState(to ?? "");
+  const [mode, setMode] = useState<"start" | "end">(from && !to ? "end" : "start");
+  const [month, setMonth] = useState(() => {
+    const date = parseCalendarDateKey(from) ?? lagosCalendarToday();
+    return new Date(date.getFullYear(), date.getMonth(), 1);
+  });
+  const [view, setView] = useState<"days" | "months" | "years">("days");
+  const [yearPageStart, setYearPageStart] = useState(() => yearPageFor(month.getFullYear()));
+  const panelRef = useRef<HTMLDivElement>(null);
+  const cells = useMemo(() => calendarCells(month), [month]);
+  const startDate = parseCalendarDateKey(start);
+  const endDate = parseCalendarDateKey(end);
+  const today = lagosCalendarToday();
+
+  useEffect(() => { panelRef.current?.focus(); }, []);
+
+  function selectDate(date: Date) {
+    const selected = calendarDateKey(date);
+    if (mode === "start" || !start || selected < start) {
+      setStart(selected);
+      setEnd("");
+      setMode("end");
+    } else {
+      setEnd(selected);
+      setMode("start");
+    }
+  }
+
+  return <div aria-label="Custom date range" aria-modal="true" className="relative max-h-[calc(100dvh-32px)] w-full overflow-y-auto rounded-[8px] border border-[#9fcbd8] bg-white p-4 shadow-[0_14px_45px_rgba(15,23,42,0.18)]" ref={panelRef} role="dialog" tabIndex={-1}>
+    <div className="flex items-center justify-between border-b border-[#b8d4dc] pb-3"><h3 className="text-base font-semibold text-[#4f4f4f]">Custom Date Range</h3><button aria-label="Close calendar" className="grid h-9 w-9 place-items-center text-black hover:text-[#196c88]" onClick={onClose} type="button"><X size={21} /></button></div>
+    <div className="mt-4 flex items-center justify-between gap-2"><button className="font-semibold text-[#196c88]" onClick={() => { setYearPageStart(yearPageFor(month.getFullYear())); setView("years"); }} type="button">{month.getFullYear()}</button><div className="flex items-center gap-2"><button className="rounded-[4px] bg-[#196c88] px-3 py-2 text-xs font-semibold text-white" onClick={() => setView(view === "months" ? "days" : "months")} type="button">{MONTH_NAMES[month.getMonth()]}</button><button aria-label={view === "days" ? "Previous month" : view === "months" ? "Previous year" : "Previous years"} className="grid h-8 w-8 place-items-center rounded-[4px] hover:bg-slate-100" onClick={() => { if (view === "years") setYearPageStart((current) => current - YEAR_PAGE_SIZE); else setMonth(new Date(month.getFullYear(), month.getMonth() - (view === "months" ? 12 : 1), 1)); }} type="button"><ChevronLeft size={20} /></button><button aria-label={view === "days" ? "Next month" : view === "months" ? "Next year" : "Next years"} className="grid h-8 w-8 place-items-center rounded-[4px] hover:bg-slate-100" onClick={() => { if (view === "years") setYearPageStart((current) => current + YEAR_PAGE_SIZE); else setMonth(new Date(month.getFullYear(), month.getMonth() + (view === "months" ? 12 : 1), 1)); }} type="button"><ChevronRight size={20} /></button></div></div>
+    {view === "days" ? <><button className="mt-3 text-xs font-semibold text-[#196c88]" onClick={() => { setMonth(new Date(today.getFullYear(), today.getMonth(), 1)); selectDate(today); }} type="button">Today: {formatDateLabel(today)}</button><div className="mt-3 grid grid-cols-7 gap-x-1 gap-y-2 text-center text-sm">{WEEKDAY_LABELS.map((day, index) => <span className={`text-xs font-medium ${index >= 5 ? "text-[#0084b8]" : "text-[#a8a8a8]"}`} key={day}>{day}</span>)}{cells.map((date) => { const key = calendarDateKey(date); const edge = key === start || key === end; const inRange = Boolean(start && end && key > start && key < end); return <button aria-label={date.toDateString()} aria-pressed={edge} className={`grid h-9 min-w-0 place-items-center rounded-[4px] text-xs font-medium transition ${edge ? "bg-[#196c88] text-white" : inRange ? "bg-[#f2f8fa] text-[#196c88]" : date.getMonth() === month.getMonth() ? "text-[#196c88] hover:bg-[#e7f2f5]" : "text-[#a8a8a8] hover:bg-slate-50"} ${key === calendarDateKey(today) && !edge ? "ring-1 ring-[#f4a422]" : ""}`} key={key} onClick={() => selectDate(date)} type="button">{date.getDate()}</button>; })}</div></> : null}
+    {view === "months" ? <div className="mt-5 grid grid-cols-3 gap-2">{MONTH_NAMES.map((name, index) => <button className={`min-h-10 rounded-[6px] text-sm font-semibold ${month.getMonth() === index ? "bg-[#196c88] text-white" : "bg-slate-50 text-[#5e5e5e] hover:bg-[#e7f2f5]"}`} key={name} onClick={() => { setMonth(new Date(month.getFullYear(), index, 1)); setView("days"); }} type="button">{name.slice(0, 3)}</button>)}</div> : null}
+    {view === "years" ? <div className="mt-5 grid grid-cols-3 gap-2">{Array.from({ length: YEAR_PAGE_SIZE }, (_, index) => yearPageStart + index).map((year) => <button className={`min-h-10 rounded-[6px] text-sm font-semibold ${month.getFullYear() === year ? "bg-[#196c88] text-white" : "bg-slate-50 text-[#5e5e5e] hover:bg-[#e7f2f5]"}`} key={year} onClick={() => { setMonth(new Date(year, month.getMonth(), 1)); setView("months"); }} type="button">{year}</button>)}</div> : null}
+    <div className="mt-5 grid grid-cols-2 gap-2 border-t border-[#b8d4dc] pt-4"><button aria-pressed={mode === "start"} className={`min-w-0 rounded-[6px] border px-2 py-2 text-left text-xs ${mode === "start" ? "border-[#196c88] bg-[#f2f8fa] text-[#196c88]" : "border-[#d9e8ee]"}`} onClick={() => { setMode("start"); if (startDate) setMonth(new Date(startDate.getFullYear(), startDate.getMonth(), 1)); setView("days"); }} type="button"><span className="block text-[#777]">Start Date</span><span className="block truncate">{formatDateLabel(startDate)}</span></button><button aria-pressed={mode === "end"} className={`min-w-0 rounded-[6px] border px-2 py-2 text-left text-xs ${mode === "end" ? "border-[#196c88] bg-[#f2f8fa] text-[#196c88]" : "border-[#d9e8ee]"}`} onClick={() => { setMode("end"); if (endDate) setMonth(new Date(endDate.getFullYear(), endDate.getMonth(), 1)); setView("days"); }} type="button"><span className="block text-[#777]">End Date</span><span className="block truncate">{formatDateLabel(endDate)}</span></button></div>
+    <div className="mt-4 flex justify-end gap-3"><button className="rounded-[5px] border border-[#196c88] px-4 py-2 text-sm text-[#196c88]" onClick={onClose} type="button">Cancel</button><button className="rounded-[5px] bg-[#196c88] px-4 py-2 text-sm text-white disabled:cursor-not-allowed disabled:opacity-50" disabled={!start || !end || start > end} onClick={() => onApply(start, end)} type="button">Apply</button></div>
+  </div>;
 }
