@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { AlertCircle, CalendarDays, Check, CheckCheck, CheckCircle2, ChevronLeft, ChevronRight, Download, FileText, Send, X } from "lucide-react";
+import { AlertCircle, Bell, CalendarDays, Check, CheckCheck, CheckCircle2, ChevronLeft, ChevronRight, Download, FileText, Send, X } from "lucide-react";
 import { Button, CustomSelect, IconButton, ProfileAvatar, Spinner, SurfaceModal } from "@/components/ui";
 import { ScheduleServiceCalendar as SharedScheduleServiceCalendar } from "@/components/schedule-service-calendar";
 import { useToast } from "@/components/toast";
@@ -42,6 +42,9 @@ type QuoteFormState = {
   projectDescription: string;
   totalBudget: string;
   durationDays: string;
+  requiresMaterialPayment: boolean;
+  materialPaymentAmount: string;
+  materialPaymentCovers: string;
 };
 
 const MAX_QUOTE_ATTACHMENT_BYTES = 5 * 1024 * 1024;
@@ -83,6 +86,17 @@ function formatMoney(value?: number | string | null, currency = "NGN") {
   return `${currency.toUpperCase()} ${amount.toLocaleString()}`;
 }
 
+function estimatedQuoteEarnings(budget: number, currency: string) {
+  const grossKobo = Math.round(budget * 100);
+  const netKobo = grossKobo - Math.round(grossKobo * 0.1);
+  return new Intl.NumberFormat("en-NG", {
+    style: "currency",
+    currency,
+    minimumFractionDigits: netKobo % 100 === 0 ? 0 : 2,
+    maximumFractionDigits: 2
+  }).format(netKobo / 100);
+}
+
 function formatFileSize(size?: number | null) {
   const value = Number(size ?? 0);
   if (!Number.isFinite(value) || value <= 0) return "";
@@ -96,7 +110,7 @@ function quoteStatusLabel(status: string) {
 }
 
 function defaultQuoteForm(): QuoteFormState {
-  return { projectTitle: "", projectDescription: "", totalBudget: "", durationDays: "5" };
+  return { projectTitle: "", projectDescription: "", totalBudget: "", durationDays: "5", requiresMaterialPayment: false, materialPaymentAmount: "", materialPaymentCovers: "" };
 }
 
 function dateOnly(value: Date) {
@@ -666,6 +680,7 @@ export function ChatModal({
   const acceptedQuote = useMemo(() => quotes.find((quote) => quote.status === "accepted") ?? null, [quotes]);
   const fixedQuoteAmount = jobConversation?.job?.price_type === "fixed" ? quoteAmount(jobConversation.job.price_amount) : null;
   const quoteCurrency = jobConversation?.job?.currency ?? "NGN";
+  const currentQuoteBudget = fixedQuoteAmount ?? (quoteForm.totalBudget.trim() ? quoteAmount(quoteForm.totalBudget) : null);
   const canExchangeContactInfo = Boolean(jobConversation && isInPersonJob && hasUpfrontPayment);
   const latestPendingReschedule = useMemo(() => {
     const requests = currentAppointment?.reschedule_requests ?? [];
@@ -809,7 +824,10 @@ export function ChatModal({
       projectTitle: latest?.project_title ?? jobConversation?.job?.title ?? "",
       projectDescription: latest?.project_description ?? jobConversation?.job?.description ?? "",
       totalBudget: String(fixedQuoteAmount ?? latest?.total_budget ?? jobConversation?.application?.proposed_rate ?? ""),
-      durationDays: String(latest?.duration_days ?? jobConversation?.application?.estimated_days ?? 5)
+      durationDays: String(latest?.duration_days ?? jobConversation?.application?.estimated_days ?? 5),
+      requiresMaterialPayment: Boolean(latest?.requires_material_payment),
+      materialPaymentAmount: latest?.material_payment_amount == null ? "" : String(latest.material_payment_amount),
+      materialPaymentCovers: latest?.material_payment_covers ?? ""
     });
     setQuoteFiles([]);
     setQuoteFormOpen(true);
@@ -897,6 +915,11 @@ export function ChatModal({
       showToast({ tone: "error", title: "Check quote duration", body: "Enter a valid project duration." });
       return;
     }
+    const materialAmount = Number(quoteForm.materialPaymentAmount);
+    if (quoteForm.requiresMaterialPayment && (!quoteForm.materialPaymentAmount.trim() || !Number.isFinite(materialAmount) || materialAmount <= 0 || materialAmount > budget || Math.abs(materialAmount * 100 - Math.round(materialAmount * 100)) > 1e-6 || !quoteForm.materialPaymentCovers.trim())) {
+      showToast({ tone: "error", title: "Check material payment", body: "Enter an amount within the budget and describe what it covers." });
+      return;
+    }
 
     setQuoteBusy("send");
     try {
@@ -905,6 +928,9 @@ export function ChatModal({
         project_description: quoteForm.projectDescription,
         total_budget: budget,
         duration_days: duration,
+        requires_material_payment: quoteForm.requiresMaterialPayment,
+        material_payment_amount: quoteForm.requiresMaterialPayment ? materialAmount : null,
+        material_payment_covers: quoteForm.requiresMaterialPayment ? quoteForm.materialPaymentCovers.trim() : null,
         attachments: []
       });
       let savedQuote = data.quote;
@@ -971,6 +997,8 @@ export function ChatModal({
       `Project: ${quote.project_title}`,
       `Budget: ${formatMoney(quote.total_budget, quoteCurrency)}`,
       `Duration: ${quote.duration_days} day${quote.duration_days === 1 ? "" : "s"}`,
+      `Material payment requested: ${quote.requires_material_payment ? formatMoney(quote.material_payment_amount, quoteCurrency) : "No"}`,
+      ...(quote.requires_material_payment ? [`What it covers: ${quote.material_payment_covers ?? ""}`] : []),
       `Status: ${quoteStatusLabel(quote.status)}`,
       "",
       quote.project_description,
@@ -1172,6 +1200,11 @@ export function ChatModal({
                   <p><span className="text-[#a4a4a4]">Total Project Budget:</span> {formatMoney(activeQuote.total_budget, quoteCurrency)}</p>
                   <p><span className="text-[#a4a4a4]">Project Duration:</span> {activeQuote.duration_days} day{activeQuote.duration_days === 1 ? "" : "s"}</p>
                 </div>
+                <div className="rounded-[6px] bg-[#f6f9fa] p-4">
+                  <p><span className="text-[#a4a4a4]">Upfront material payment:</span> {activeQuote.requires_material_payment ? formatMoney(activeQuote.material_payment_amount, quoteCurrency) : "Not requested"}</p>
+                  {activeQuote.requires_material_payment ? <p className="mt-2"><span className="text-[#a4a4a4]">What the Payment Covers:</span> {activeQuote.material_payment_covers}</p> : null}
+                  <p className="mt-2 text-xs text-[#757575]">This is part of the project budget, not an additional charge. The standard 50% upfront checkout payment still applies.</p>
+                </div>
                 {activeQuote.review_note && activeQuote.status === "review_requested" ? (
                   <p className="rounded-[6px] border border-[#f9d999] bg-[#fffbe6] p-3">{activeQuote.review_note}</p>
                 ) : null}
@@ -1251,6 +1284,18 @@ export function ChatModal({
                     <input className="mt-2 min-h-11 w-full rounded-[6px] border border-line px-3 text-sm outline-none transition focus:border-[#196c88] focus:ring-4 focus:ring-teal-100" min={1} onChange={(event) => setQuoteForm((current) => ({ ...current, durationDays: event.target.value }))} type="number" value={quoteForm.durationDays} />
                   </label>
                 </div>
+                {currentQuoteBudget !== null && currentQuoteBudget >= 0 ? <p className="text-sm text-[#ee8b00]">Your estimated earning after completed service: {estimatedQuoteEarnings(currentQuoteBudget, quoteCurrency)}</p> : null}
+                <div>
+                  <p className="text-sm font-semibold text-[#5e5e5e]">Does this service require an upfront material payment?</p>
+                  <div className="mt-2 inline-flex rounded-[6px] bg-[#f1f3f4] p-1" role="group" aria-label="Upfront material payment">
+                    {([true, false] as const).map((option) => <button aria-pressed={quoteForm.requiresMaterialPayment === option} className={`min-w-20 rounded-[5px] px-5 py-2 text-sm ${quoteForm.requiresMaterialPayment === option ? "bg-white text-[#196c88] shadow-sm" : "text-[#757575]"}`} key={String(option)} onClick={() => setQuoteForm((current) => ({ ...current, requiresMaterialPayment: option, materialPaymentAmount: option ? current.materialPaymentAmount : "", materialPaymentCovers: option ? current.materialPaymentCovers : "" }))} type="button">{option ? "Yes" : "No"}</button>)}
+                  </div>
+                  <p className="mt-2 text-xs text-[#757575]">This amount is part of the budget and does not change the standard 50% upfront checkout payment.</p>
+                </div>
+                {quoteForm.requiresMaterialPayment ? <div className="grid gap-4 sm:grid-cols-2">
+                  <label className="block text-sm font-semibold text-[#5e5e5e]">Upfront Payment Amount<input className="mt-2 min-h-11 w-full rounded-[6px] border border-line px-3 text-sm outline-none focus:border-[#196c88]" max={currentQuoteBudget ?? undefined} min="0.01" onChange={(event) => setQuoteForm((current) => ({ ...current, materialPaymentAmount: event.target.value }))} step="0.01" type="number" value={quoteForm.materialPaymentAmount} /></label>
+                  <label className="block text-sm font-semibold text-[#5e5e5e]">What the Payment Covers<textarea className="mt-2 min-h-11 w-full rounded-[6px] border border-line px-3 py-2 text-sm outline-none focus:border-[#196c88]" maxLength={2000} onChange={(event) => setQuoteForm((current) => ({ ...current, materialPaymentCovers: event.target.value }))} rows={2} value={quoteForm.materialPaymentCovers} /></label>
+                </div> : null}
                 <label className="block text-sm font-semibold text-[#5e5e5e]">
                   Attachments
                   <span className="mt-2 flex min-h-[96px] cursor-pointer flex-col items-center justify-center rounded-[6px] border border-dashed border-[#b8d1da] px-4 text-center text-sm text-[#a4a4a4] transition hover:border-[#196c88]">
@@ -1284,6 +1329,7 @@ export function ChatModal({
                   {quoteBusy === "send" ? <Spinner className="h-5 w-5" /> : "Send Quote to chat"}
                 </Button>
               </div>
+              <div className="mt-6 flex items-start gap-2 rounded-[5px] border border-[#f3cc72] bg-[#fffbea] px-4 py-3 text-xs leading-5 text-[#666]"><Bell aria-hidden="true" className="mt-0.5 shrink-0 text-[#ee9a13]" size={17} strokeWidth={1.8} /><span>Accordia charges professionals 10% service fee on completed services. This fee is deducted from your earnings when payment is realised</span></div>
             </section>
           </div>
         ) : null}
