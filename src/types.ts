@@ -137,6 +137,9 @@ export type JobQuote = {
   project_description: string;
   total_budget: number;
   duration_days: number;
+  requires_material_payment?: boolean;
+  material_payment_amount?: number | null;
+  material_payment_covers?: string | null;
   attachments: JobQuoteAttachment[];
   review_note?: string | null;
   accepted_at?: string | null;

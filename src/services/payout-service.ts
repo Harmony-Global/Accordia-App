@@ -62,3 +62,15 @@ export const approvePayoutDestination = (token: string, id: string) => apiFetch<
 export const setEarningHold = (token: string, id: string, hold_reason: string | null) => apiFetch<{ earning: { id: string; hold_reason: string | null } }>(`/api/admin/payouts/earnings/${id}`, { token, method: "PATCH", body: { hold_reason } });
 export const reconcilePayout = (token: string, payload: { destination_id: string; reference: string; allocations: { id: string; amount_kobo: number }[] }) =>
   apiFetch<{ payout_id: string; status: string }>("/api/admin/payouts", { token, method: "POST", body: payload });
+
+export type AdminRefund = {
+  id: string; provider_refund_id: string; amount_kobo: number; status: string;
+  initiated_at: string; reconciled_at: string | null; reconciliation_note: string | null;
+  payment: { id: string; professional_id: string | null; conversation_id: string | null; appointment_id: string | null; provider_reference: string } | null;
+};
+export const getAdminRefunds = (token: string, page = 1) =>
+  apiFetch<{ refunds: AdminRefund[]; total: number; page: number; page_size: number }>(`/api/admin/payments/refunds?page=${page}`, { token, cacheTtlMs: 0 });
+export const syncAdminRefunds = (token: string, page = 1) =>
+  apiFetch<{ fetched: number; recorded: number; has_more: boolean; next_page: number }>(`/api/admin/payments/refunds/sync?page=${page}`, { token, method: "POST" });
+export const reconcileAdminRefund = (token: string, id: string, note: string) =>
+  apiFetch<{ reconciled: boolean; hold_released: boolean }>(`/api/admin/payments/refunds/${id}/reconcile`, { token, method: "POST", body: { note } });
